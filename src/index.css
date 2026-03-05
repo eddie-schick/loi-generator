@@ -1,0 +1,282 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --teal-primary: #3B8C7D;
+  --teal-light: #5BA99A;
+  --teal-dark: #2A6359;
+  --navy: #1E3A5F;
+  --neutral-50: #F8F9FA;
+  --neutral-100: #F1F3F4;
+  --neutral-200: #E8EAED;
+  --neutral-700: #5F6368;
+  --neutral-900: #202124;
+  --success: #10B981;
+  --error: #EF4444;
+  --warning: #F59E0B;
+  --gradient-hero: linear-gradient(135deg, #1E3A5F 0%, #3B8C7D 100%);
+  --gradient-primary: linear-gradient(135deg, #3B8C7D 0%, #5BA99A 100%);
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --shadow-md: 0 1px 3px 0 rgba(60,64,67,0.15), 0 1px 2px 0 rgba(60,64,67,0.1);
+  --shadow-lg: 0 4px 6px -1px rgba(60,64,67,0.15), 0 2px 4px -1px rgba(60,64,67,0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-primary);
+  color: var(--neutral-900);
+  background-color: var(--neutral-50);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.btn-primary {
+  background: var(--gradient-primary);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.625rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: opacity 0.2s, transform 0.1s;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.btn-secondary {
+  background: white;
+  color: var(--teal-primary);
+  border: 1px solid var(--teal-primary);
+  border-radius: 0.5rem;
+  padding: 0.625rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-secondary:hover { background: var(--neutral-50); }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.form-input {
+  width: 100%;
+  border: 1px solid var(--neutral-200);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  font-family: var(--font-primary);
+  color: var(--neutral-900);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+.form-input:focus {
+  border-color: var(--teal-primary);
+  box-shadow: 0 0 0 3px rgba(59, 140, 125, 0.1);
+}
+.form-input::placeholder { color: #9AA0A6; }
+
+/* Currency inputs: leave room for leading $ so it doesn't overlap the value */
+.form-input.input-currency {
+  padding-left: 1.75rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--neutral-700);
+  margin-bottom: 0.375rem;
+}
+
+.card {
+  background: white;
+  border: 1px solid var(--neutral-200);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.1);
+}
+
+/* LOI document — printed-page look */
+.loi-document-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 40px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--neutral-900);
+}
+
+.loi-letterhead {
+  margin-bottom: 12px;
+}
+
+.loi-letterhead-logo {
+  height: 2rem;
+  width: auto;
+  display: block;
+}
+
+.loi-letterhead-wordmark {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 700;
+  font-size: 1.75rem;
+  color: #3B8C7D;
+  letter-spacing: -0.02em;
+}
+
+.loi-letterhead-divider {
+  height: 1px;
+  background: #3B8C7D;
+  margin-bottom: 32px;
+  opacity: 0.6;
+}
+
+/* Letterhead lines inside body (SHAED Inc. / Minneapolis | shaed.ai / Date) — no space between rows */
+.loi-letterhead-block {
+  margin-bottom: 1em;
+}
+.loi-letterhead-block .loi-letterhead-line {
+  margin: 0;
+  line-height: 1.35;
+}
+.loi-letterhead-block .loi-letterhead-line:first-child {
+  font-weight: 700;
+}
+
+.loi-document-body {
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.8;
+}
+
+.loi-document-body > *:first-child {
+  margin-top: 0;
+}
+
+.loi-section-header {
+  font-variant: small-caps;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  color: #3B8C7D;
+  border-bottom: 1px solid rgba(59, 140, 125, 0.4);
+  padding-bottom: 6px;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.loi-section-header:first-child {
+  margin-top: 0;
+}
+
+.loi-body-paragraph {
+  margin-bottom: 1em;
+}
+
+.loi-body-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.loi-list-wrap {
+  margin: 0.5em 0 1em 0;
+  padding-left: 1.5em;
+}
+
+.loi-list-item {
+  margin-bottom: 0.35em;
+}
+
+.loi-paragraph-spacer {
+  height: 0.75em;
+  min-height: 12px;
+}
+
+/* Signature block: customer left, SHAED right, lines for DocuSign */
+.loi-signature-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 2em;
+  margin-bottom: 1em;
+}
+
+.loi-sig-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.loi-sig-col-left { align-items: flex-start; }
+.loi-sig-col-right { align-items: flex-end; text-align: right; }
+
+.loi-sig-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--neutral-900);
+  margin-bottom: 0.25rem;
+}
+
+.loi-sig-line {
+  width: 100%;
+  min-width: 180px;
+  min-height: 1.4em;
+  border-bottom: 1px solid var(--neutral-900);
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.loi-sig-col-right .loi-sig-line {
+  margin-left: auto;
+}
+
+.loi-sig-meta {
+  font-size: 0.85rem;
+  color: var(--neutral-700);
+}
+
+/* DocuSign anchors: invisible but present in DOM for tab placement */
+.loi-docusign-anchor {
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  opacity: 0;
+  user-select: none;
+  display: inline;
+  pointer-events: none;
+}
+
+/* Signature block: date label and line spacing */
+.loi-sig-date-label {
+  margin-top: 0.35rem;
+}
+.loi-sig-date-line {
+  margin-bottom: 0.25rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--neutral-200);
+  border-top-color: var(--teal-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
