@@ -5,7 +5,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing authorization code' });
   }
 
-  const baseUrl = 'https://account.docusign.com';
+  const baseUrl = process.env.DOCUSIGN_BASE_URL?.includes('demo')
+    ? 'https://account-d.docusign.com'
+    : 'https://account.docusign.com';
 
   const credentials = Buffer.from(
     `${process.env.DOCUSIGN_CLIENT_ID}:${process.env.DOCUSIGN_CLIENT_SECRET}`

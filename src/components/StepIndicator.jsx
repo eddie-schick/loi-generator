@@ -6,12 +6,12 @@ const steps = [
 
 export default function StepIndicator({ currentStep }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-6">
+    <div className="flex items-center justify-center gap-1 sm:gap-2 py-4 sm:py-6 px-2 overflow-x-auto">
       {steps.map((step, i) => (
-        <div key={step.number} className="flex items-center">
-          <div className="flex items-center gap-2">
+        <div key={step.number} className="flex items-center flex-shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors shrink-0 ${
                 currentStep >= step.number
                   ? 'text-white'
                   : 'bg-neutral-200 text-neutral-700'
@@ -36,7 +36,7 @@ export default function StepIndicator({ currentStep }) {
           </div>
           {i < steps.length - 1 && (
             <div
-              className={`w-12 sm:w-20 h-0.5 mx-2 ${
+              className={`w-8 sm:w-12 md:w-20 h-0.5 mx-1 sm:mx-2 ${
                 currentStep > step.number ? 'bg-teal-primary' : 'bg-neutral-200'
               }`}
             />

@@ -86,11 +86,11 @@ export default function App() {
       <Header />
       <StepIndicator currentStep={currentStep} />
 
-      <main className="px-4 sm:px-6 pb-12">
+      <main className="px-4 sm:px-6 pb-12 min-h-0 overflow-x-hidden">
         {error && (
-          <div className="max-w-4xl mx-auto mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 ml-4">
+          <div className="max-w-4xl mx-auto mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex-1 min-w-0">{error}</span>
+            <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 p-2 -m-2 touch-manipulation flex-shrink-0" aria-label="Dismiss error">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>

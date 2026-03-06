@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { jsPDF } from 'jspdf';
 
 const DOCU_SIGN_ANCHORS = ['/sig1/', '/sig2/', '/date1/', '/date2/'];
 // Logo/icon in public/ folder (spaces URL-encoded)
@@ -207,6 +208,299 @@ const SHAED_SIGNATORY = {
   eddie: { name: 'Eddie Schick', title: 'COO & Co-Founder' },
 };
 
+/** Strip **bold** and DocuSign anchors for plain PDF text */
+function stripForPdf(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\/sig1\/|\/sig2\/|\/date1\/|\/date2\//g, '');
+}
+
+/** True if this paragraph is redundant with our single signature block (avoids duplication in PDF/preview) */
+function isRedundantSignatureParagraph(text, dealData) {
+  const t = text.trim();
+  const plain = stripForPdf(t);
+  if (!plain || !plain.trim()) return true; // only anchors
+  const lower = plain.trim().toLowerCase();
+
+  // Exact matches for common signature-area labels
+  const redundant = [
+    'printed name', 'title', 'date:', 'date', 'signature', 'signature:',
+    'counterparty', 'shaed inc.', 'shaed inc'
+  ];
+  if (redundant.includes(lower)) return true;
+
+  // "Date: Date:" or multiple date labels on one line
+  if (/^(date:?\s*)+$/i.test(lower)) return true;
+
+  // Company names (exact or combined on one line)
+  const companyName = dealData?.companyName?.trim();
+  if (companyName && lower.includes(companyName.toLowerCase()) && lower.includes('shaed')) return true;
+  if (companyName && plain.trim() === companyName) return true;
+  if (/^SHAED\s+Inc\.?$/i.test(plain.trim())) return true;
+
+  // Signatory names/titles — individual or combined on one line
+  const leftName = dealData?.signorName?.trim() || '';
+  const leftTitle = dealData?.signorTitle?.trim() || '';
+  const leftSignatory = leftName + (leftTitle ? `, ${leftTitle}` : '');
+  const ryan = SHAED_SIGNATORY.ryan.name + ', ' + SHAED_SIGNATORY.ryan.title;
+  const eddie = SHAED_SIGNATORY.eddie.name + ', ' + SHAED_SIGNATORY.eddie.title;
+
+  // Check if line contains both a left signatory part and a SHAED signatory part (combined line)
+  const hasLeftPart = leftName && lower.includes(leftName.toLowerCase());
+  const hasRightPart = lower.includes('ryan pritchard') || lower.includes('eddie schick');
+  if (hasLeftPart && hasRightPart) return true;
+
+  // Exact matches for individual names/titles
+  const exactChecks = [
+    leftSignatory, leftName, leftTitle,
+    ryan, eddie,
+    SHAED_SIGNATORY.ryan.name, SHAED_SIGNATORY.eddie.name,
+    SHAED_SIGNATORY.ryan.title, SHAED_SIGNATORY.eddie.title,
+  ].filter(Boolean);
+  if (exactChecks.some(c => plain.trim() === c)) return true;
+
+  // "Name, Title, Date:" patterns
+  if (exactChecks.some(c => plain.trim() === `${c}, Date:` || plain.trim() === `${c}, Date`)) return true;
+
+  // Lines that are mostly signature/date labels with names (catch-all for combined sig lines)
+  if (/^(signature|printed name|title|date):?\s/i.test(lower) && lower.length < 100) return true;
+
+  return false;
+}
+
+/** Extract signature block labels from raw block text (same logic as SignatureBlock) */
+function getSignatureLabels(text) {
+  const hasRightPart = /\s*RIGHT\s*—\s*/i.test(text);
+  let leftLabel = 'Counterparty';
+  let rightLabel = 'SHAED Inc.';
+  if (hasRightPart) {
+    const leftRight = text.split(/\s*RIGHT\s*—\s*/i);
+    const leftPart = leftRight[0] || '';
+    const rightPart = leftRight.length > 1 ? leftRight.slice(1).join(' RIGHT — ') : '';
+    leftLabel = leftPart.replace(/^LEFT\s*—\s*/i, '').split(/\s*:\s*Signature/i)[0].trim() || leftLabel;
+    rightLabel = rightPart.replace(/^RIGHT\s*—\s*/i, '').split(/\s*:\s*Signature/i)[0].trim() || rightLabel;
+  }
+  return { leftLabel, rightLabel };
+}
+
+/** Load logo from public URL and return { dataUrl, widthMm, heightMm } for PDF. Resolves to null if load fails. */
+export function loadLogoForPdf() {
+  const logoUrl = '/SHAED%20Logo%20-%20Updated.png';
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/png');
+        const heightMm = 10;
+        const widthMm = heightMm * (img.naturalWidth / img.naturalHeight);
+        resolve({ dataUrl, widthMm, heightMm });
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = logoUrl;
+  });
+}
+
+/**
+ * Build a jsPDF document from LOI text in the same format as the preview.
+ * Signature blocks are cleaned (no /sig1/, /date1/, etc.) with two-column layout.
+ * Only the first signature block is rendered to avoid duplicates.
+ * @param {object} logo - Optional { dataUrl, widthMm, heightMm } to place at top
+ */
+export function buildLOIPdf(text, dealData, logo = null) {
+  const doc = new jsPDF({ unit: 'mm' });
+  const margin = 20;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - margin * 2;
+  const lineHeight = 5.5;
+  const spacerHeight = 3;
+  const font = 'times';
+  const bodySize = 11;
+  const sectionSize = 12;
+  const teal = [59, 140, 125];
+
+  let y = margin;
+
+  function checkPageBreak(needed = 15) {
+    if (y > pageHeight - margin - needed) {
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  // Logo at top
+  if (logo?.dataUrl) {
+    doc.addImage(logo.dataUrl, 'PNG', margin, y, logo.widthMm, logo.heightMm);
+    y += logo.heightMm + 4;
+    doc.setDrawColor(...teal);
+    doc.setLineWidth(0.2);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+  }
+
+  const blocks = parseLOIBlocks(text);
+  const shaedSignatory = dealData?.shaedSignatory === 'eddie' ? SHAED_SIGNATORY.eddie : SHAED_SIGNATORY.ryan;
+  const leftName = dealData?.signorName || 'Printed Name';
+  const leftTitle = dealData?.signorTitle || 'Title';
+  let signatureRendered = false;
+
+  for (const block of blocks) {
+    // Once we've rendered the signature block, skip everything after it
+    if (signatureRendered && block.type !== 'signature') continue;
+
+    if (block.type === 'spacer') {
+      y += spacerHeight;
+      continue;
+    }
+
+    if (block.type === 'letterhead') {
+      checkPageBreak(25);
+      doc.setFont(font, 'bold');
+      doc.setFontSize(bodySize);
+      doc.setTextColor(0, 0, 0);
+      if (block.lines[0]) {
+        doc.text(stripForPdf(block.lines[0]), margin, y);
+        y += lineHeight;
+      }
+      doc.setFont(font, 'normal');
+      for (let i = 1; i < block.lines.length; i++) {
+        doc.text(stripForPdf(block.lines[i]), margin, y);
+        y += lineHeight;
+      }
+      y += lineHeight;
+      continue;
+    }
+
+    if (block.type === 'section') {
+      // Skip redundant section headers that duplicate our signature block labels
+      const sectionText = stripForPdf(block.text).trim();
+      const companyUpper = dealData?.companyName?.trim().toUpperCase();
+      if (companyUpper && sectionText === companyUpper) continue;
+      if (/^SHAED\s+INC\.?$/i.test(sectionText)) continue;
+      if (/^COUNTERPARTY$/i.test(sectionText)) continue;
+      checkPageBreak(20);
+      doc.setFont(font, 'bold');
+      doc.setFontSize(sectionSize);
+      doc.setTextColor(...teal);
+      doc.text(sectionText, margin, y);
+      y += 6;
+      doc.setDrawColor(...teal);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 4;
+      doc.setFont(font, 'normal');
+      doc.setFontSize(bodySize);
+      doc.setTextColor(0, 0, 0);
+      y += lineHeight;
+      continue;
+    }
+
+    if (block.type === 'paragraph') {
+      if (isRedundantSignatureParagraph(block.text, dealData)) continue;
+      const plain = stripForPdf(block.text);
+      const lines = doc.splitTextToSize(plain, maxWidth);
+      for (const line of lines) {
+        checkPageBreak();
+        doc.setFont(font, 'normal');
+        doc.setFontSize(bodySize);
+        doc.setTextColor(0, 0, 0);
+        doc.text(line, margin, y);
+        y += lineHeight;
+      }
+      y += lineHeight * 0.5;
+      continue;
+    }
+
+    if (block.type === 'list') {
+      const items = block.items.filter((item) => !isRedundantSignatureParagraph(item, dealData));
+      if (items.length === 0) continue;
+      doc.setFont(font, 'normal');
+      doc.setFontSize(bodySize);
+      doc.setTextColor(0, 0, 0);
+      for (const item of items) {
+        const plain = stripForPdf(item);
+        const lines = doc.splitTextToSize(plain, maxWidth - 6);
+        checkPageBreak();
+        doc.text('•', margin, y);
+        doc.text(lines[0] || '', margin + 6, y);
+        y += lineHeight;
+        for (let i = 1; i < lines.length; i++) {
+          checkPageBreak();
+          doc.text(lines[i], margin + 6, y);
+          y += lineHeight;
+        }
+      }
+      y += lineHeight * 0.5;
+      continue;
+    }
+
+    if (block.type === 'signature') {
+      if (signatureRendered) continue;
+      signatureRendered = true;
+      checkPageBreak(45);
+      const { leftLabel, rightLabel } = getSignatureLabels(block.text);
+      const colWidth = (pageWidth - margin * 2 - 20) / 2;
+      const leftX = margin;
+      const rightX = margin + colWidth + 20;
+      const metaSize = 9;
+      const sigStartY = y;
+
+      // Left column
+      doc.setFont(font, 'bold');
+      doc.setFontSize(bodySize);
+      doc.setTextColor(0, 0, 0);
+      doc.text(leftLabel, leftX, y);
+      y += 5;
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.2);
+      doc.line(leftX, y, leftX + colWidth, y);
+      y += 6;
+      doc.setFont(font, 'normal');
+      doc.setFontSize(metaSize);
+      doc.text(leftName, leftX, y);
+      y += 4;
+      doc.text(leftTitle, leftX, y);
+      y += 5;
+      doc.text('Date:', leftX, y);
+      y += 4;
+      const dateLineLength = 45;
+      doc.line(leftX, y, leftX + dateLineLength, y);
+      const leftBottom = y + 6;
+
+      // Right column (same vertical layout, starting at sigStartY)
+      y = sigStartY;
+      doc.setFont(font, 'bold');
+      doc.setFontSize(bodySize);
+      doc.text(rightLabel, rightX, y);
+      y += 5;
+      doc.line(rightX + colWidth - 80, y, rightX + colWidth, y);
+      y += 6;
+      doc.setFont(font, 'normal');
+      doc.setFontSize(metaSize);
+      doc.text(shaedSignatory.name, rightX, y);
+      y += 4;
+      doc.text(shaedSignatory.title, rightX, y);
+      y += 5;
+      doc.text('Date:', rightX, y);
+      y += 4;
+      doc.line(rightX + colWidth - dateLineLength, y, rightX + colWidth, y);
+      y = Math.max(leftBottom, y + 6);
+      continue;
+    }
+  }
+
+  return doc;
+}
+
 /** Two-column signature block: customer left, SHAED right, with lines for DocuSign */
 function SignatureBlock({ text, dealData }) {
   const hasRightPart = /\s*RIGHT\s*—\s*/i.test(text);
@@ -222,8 +516,8 @@ function SignatureBlock({ text, dealData }) {
   }
 
   const shaedSignatory = dealData?.shaedSignatory === 'eddie' ? SHAED_SIGNATORY.eddie : SHAED_SIGNATORY.ryan;
-  const leftName = 'Printed Name';
-  const leftTitle = 'Title';
+  const leftName = dealData?.signorName || 'Printed Name';
+  const leftTitle = dealData?.signorTitle || 'Title';
   const rightName = shaedSignatory.name;
   const rightTitle = shaedSignatory.title;
 
@@ -259,13 +553,27 @@ function SignatureBlock({ text, dealData }) {
 
 function RenderedLOI({ text, dealData }) {
   const blocks = useMemo(() => parseLOIBlocks(text), [text]);
+  let signatureRendered = false;
   return (
     <div className="loi-document-body">
       {blocks.map((block, i) => {
+        // Once signature is rendered, skip everything after it
+        if (signatureRendered && block.type !== 'signature') return null;
+
         if (block.type === 'spacer') {
           return <div key={i} className="loi-paragraph-spacer" />;
         }
+        if (block.type === 'signature') {
+          if (signatureRendered) return null;
+          signatureRendered = true;
+          return <SignatureBlock key={i} text={block.text} dealData={dealData} />;
+        }
         if (block.type === 'section') {
+          const sectionText = (block.text || '').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
+          const companyUpper = dealData?.companyName?.trim().toUpperCase();
+          if (companyUpper && sectionText === companyUpper) return null;
+          if (/^SHAED\s+INC\.?$/i.test(sectionText)) return null;
+          if (/^COUNTERPARTY$/i.test(sectionText)) return null;
           return (
             <div key={i} className="loi-section-header">
               {renderInline(block.text, `s-${i}`)}
@@ -273,9 +581,11 @@ function RenderedLOI({ text, dealData }) {
           );
         }
         if (block.type === 'list') {
+          const items = block.items.filter((item) => !isRedundantSignatureParagraph(item, dealData));
+          if (items.length === 0) return null;
           return (
             <ul key={i} className="loi-list-wrap">
-              {block.items.map((item, j) => (
+              {items.map((item, j) => (
                 <li key={j} className="loi-list-item">
                   {renderInline(item, `l-${i}-${j}`)}
                 </li>
@@ -283,8 +593,13 @@ function RenderedLOI({ text, dealData }) {
             </ul>
           );
         }
-        if (block.type === 'signature') {
-          return <SignatureBlock key={i} text={block.text} dealData={dealData} />;
+        if (block.type === 'paragraph') {
+          if (isRedundantSignatureParagraph(block.text, dealData)) return null;
+          return (
+            <p key={i} className="loi-body-paragraph">
+              {renderInline(block.text, `p-${i}`)}
+            </p>
+          );
         }
         if (block.type === 'letterhead') {
           return (
@@ -297,11 +612,7 @@ function RenderedLOI({ text, dealData }) {
             </div>
           );
         }
-        return (
-          <p key={i} className="loi-body-paragraph">
-            {renderInline(block.text, `p-${i}`)}
-          </p>
-        );
+        return null;
       })}
     </div>
   );
@@ -372,9 +683,9 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
   const moduleLabels = { shop: 'Shop', track: 'Track', document: 'Document' };
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto min-w-0">
       {/* Deal summary chips */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-3 sm:mb-4">
         <span className="px-3 py-1 text-xs font-medium rounded-full bg-teal-primary/10 text-teal-dark">
           {dealData.companyName}
         </span>
@@ -400,21 +711,21 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* LOI Preview — left 2/3 */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="card p-6 sm:p-8">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
+        <div className="lg:col-span-2 space-y-4 min-w-0">
+          <div className="card p-4 sm:p-6 lg:p-8">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
                 <h3 className="text-sm font-semibold text-neutral-900">Letter of Intent</h3>
                 {/* Version chips */}
                 {revisionHistory.length > 1 && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     {revisionHistory.map(r => (
                       <button
                         key={r.version}
                         onClick={() => setCurrentVersion(r.version)}
-                        className={`px-2 py-0.5 text-xs rounded-full transition-colors ${
+                        className={`px-2 py-1 text-xs rounded-full transition-colors touch-manipulation ${
                           r.version === currentVersion
                             ? 'bg-teal-primary text-white font-semibold'
                             : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
@@ -426,12 +737,12 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-xs text-neutral-700">{charCount.toLocaleString()} chars</span>
                 <button
                   type="button"
                   onClick={() => setIsEditing(!isEditing)}
-                  className="text-xs px-2 py-1 rounded border border-neutral-200 text-neutral-700 hover:bg-neutral-50"
+                  className="text-xs px-2 py-1.5 sm:py-1 rounded border border-neutral-200 text-neutral-700 hover:bg-neutral-50 touch-manipulation min-h-[36px] sm:min-h-0"
                 >
                   {isEditing ? 'Preview' : 'Edit'}
                 </button>
@@ -442,11 +753,11 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
               <textarea
                 value={currentText}
                 onChange={handleTextEdit}
-                className="w-full min-h-[600px] font-mono text-sm leading-relaxed p-4 border border-neutral-200 rounded-lg focus:border-teal-primary focus:ring-1 focus:ring-teal-primary/20 outline-none resize-y"
+                className="w-full min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] font-mono text-sm leading-relaxed p-3 sm:p-4 border border-neutral-200 rounded-lg focus:border-teal-primary focus:ring-1 focus:ring-teal-primary/20 outline-none resize-y"
                 style={{ fontFamily: "'Courier New', monospace", fontSize: '0.8125rem' }}
               />
             ) : (
-              <div className="loi-document-page min-h-[600px] rounded-lg overflow-hidden">
+              <div className="loi-document-page min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] rounded-lg overflow-hidden">
                 <header className="loi-letterhead">
                   <LOILetterheadLogo />
                 </header>
@@ -458,7 +769,7 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
 
           {/* AI Edit Panel */}
           <div
-            className="rounded-xl p-5 border-l-4"
+            className="rounded-xl p-4 sm:p-5 border-l-4"
             style={{ background: '#E8F5F3', borderLeftColor: 'var(--teal-primary)' }}
           >
             <h4 className="text-sm font-semibold text-neutral-900 mb-3">Request a Change</h4>
@@ -466,7 +777,7 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
               value={editInstruction}
               onChange={(e) => setEditInstruction(e.target.value)}
               rows={3}
-              className="w-full border border-neutral-200 rounded-lg p-3 text-sm resize-none outline-none focus:border-teal-primary focus:ring-1 focus:ring-teal-primary/20 bg-white"
+              className="w-full border border-neutral-200 rounded-lg p-3 text-sm resize-none outline-none focus:border-teal-primary focus:ring-1 focus:ring-teal-primary/20 bg-white min-h-[80px]"
               placeholder={'e.g. "Change the implementation fee to $30,000"\n"Add a 90-day pilot period before subscription"\n"Remove the confidentiality section"'}
               disabled={isRevising}
             />
@@ -475,11 +786,11 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
               <p className="text-error text-xs mt-2">{revisionError}</p>
             )}
 
-            <div className="flex items-center justify-between mt-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-3">
               <button
                 onClick={handleRevise}
                 disabled={isRevising || !editInstruction.trim()}
-                className="btn-primary py-2 px-5 text-sm flex items-center gap-2"
+                className="btn-primary py-2.5 sm:py-2 px-5 text-sm flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0"
               >
                 {isRevising ? (
                   <>
@@ -500,20 +811,20 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
         </div>
 
         {/* Right pane — controls */}
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0">
           <div className="card p-4">
             <h4 className="text-sm font-semibold text-neutral-900 mb-3">Actions</h4>
             <div className="space-y-2">
               <button
                 onClick={handleSend}
-                className="btn-primary w-full py-2.5"
+                className="btn-primary w-full py-2.5 min-h-[44px] sm:min-h-0"
               >
                 Send for Signature →
               </button>
               <button
                 onClick={handleRegenerate}
                 disabled={isRegenerating}
-                className="btn-secondary w-full py-2.5 flex items-center justify-center gap-2"
+                className="btn-secondary w-full py-2.5 min-h-[44px] sm:min-h-0 flex items-center justify-center gap-2"
               >
                 {isRegenerating ? (
                   <>
@@ -526,7 +837,7 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
               </button>
               <button
                 onClick={onBack}
-                className="btn-secondary w-full py-2.5"
+                className="btn-secondary w-full py-2.5 min-h-[44px] sm:min-h-0"
               >
                 ← Back to Form
               </button>
@@ -535,20 +846,32 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
 
           <div className="card p-4">
             <h4 className="text-sm font-semibold text-neutral-900 mb-3">Quick Actions</h4>
-            <button
-              onClick={() => {
-                const blob = new Blob([currentText], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="text-sm text-teal-primary hover:text-teal-dark font-medium"
-            >
-              Download LOI (.txt)
-            </button>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  const blob = new Blob([currentText], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="text-sm text-teal-primary hover:text-teal-dark font-medium text-left"
+              >
+                Download LOI (.txt)
+              </button>
+              <button
+                onClick={async () => {
+                  const logo = await loadLogoForPdf();
+                  const doc = buildLOIPdf(currentText, dealData, logo);
+                  doc.save(`SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+                }}
+                className="text-sm text-teal-primary hover:text-teal-dark font-medium text-left"
+              >
+                Download LOI (.pdf)
+              </button>
+            </div>
           </div>
 
           <div className="card p-4">

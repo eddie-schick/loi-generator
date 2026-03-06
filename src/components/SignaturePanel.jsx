@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { buildLOIPdf, loadLogoForPdf } from './LOIPreview';
 
 const STATUS_COLORS = {
   created: 'bg-neutral-200 text-neutral-700',
@@ -52,11 +53,17 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
     setError('');
 
     try {
+      // Generate styled PDF on the client
+      const logo = await loadLogoForPdf();
+      const pdfDoc = buildLOIPdf(loiText, dealData, logo);
+      const pdfBase64 = pdfDoc.output('datauristring').split(',')[1];
+
       const res = await fetch('/api/send-docusign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           loiText,
+          pdfBase64,
           companyName: dealData.companyName,
           signerEmail: recipientEmail,
           signerName: recipientName,
@@ -92,8 +99,8 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
   // Not authenticated state
   if (!isDocuSignConnected) {
     return (
-      <div className="max-w-lg mx-auto">
-        <div className="card p-8 text-center">
+      <div className="max-w-lg mx-auto px-0">
+        <div className="card p-6 sm:p-8 text-center">
           <div className="w-16 h-16 rounded-full bg-navy/10 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-navy" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
@@ -114,8 +121,8 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
   // Envelope sent — success state
   if (envelopeId) {
     return (
-      <div className="max-w-lg mx-auto">
-        <div className="card p-8 text-center">
+      <div className="max-w-lg mx-auto px-0">
+        <div className="card p-6 sm:p-8 text-center">
           <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -162,6 +169,16 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
             >
               Download LOI (.txt)
             </button>
+            <button
+              onClick={async () => {
+                const logo = await loadLogoForPdf();
+                const doc = buildLOIPdf(loiText, dealData, logo);
+                doc.save(`SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+              }}
+              className="btn-secondary py-2.5"
+            >
+              Download LOI (.pdf)
+            </button>
           </div>
         </div>
       </div>
@@ -170,8 +187,8 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
 
   // Send form
   return (
-    <div className="max-w-lg mx-auto">
-      <div className="card p-6">
+    <div className="max-w-lg mx-auto px-0">
+      <div className="card p-4 sm:p-6">
         <h3 className="text-lg font-semibold text-neutral-900 mb-1">Send for E-Signature</h3>
         <p className="text-sm text-neutral-700 mb-6">
           Send the LOI via DocuSign. The counterparty signs first, then SHAED signs second.

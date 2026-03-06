@@ -26,7 +26,7 @@ const DEMO_DATA = {
   signorEmail: 'mtorres@summittruckequipment.com',
   platformUseCase: 'Met at NTEA Work Truck Week, March 2026. Looking to replace manual order tracking spreadsheets and eliminate the daily "where\'s my truck?" calls from their dealer network. Primary need is real-time order visibility across all 12 dealer relationships from one dashboard. Secondary interest in catalog presence for equipment listings.',
   modules: ['shop', 'track'],
-  subscriptionFee: '500',
+  subscriptionFee: '',
   implementation: 'yes',
   implementationFee: '15000',
   discoveryPeriod: '30 days',
@@ -44,7 +44,7 @@ function getInitialFormData() {
     signorEmail: '',
     platformUseCase: '',
     modules: [],
-    subscriptionFee: '500',
+    subscriptionFee: '',
     implementation: 'no',
     implementationFee: '25000',
     discoveryPeriod: '',
@@ -123,15 +123,15 @@ export default function LOIForm({ onGenerate, isGenerating }) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-neutral-900">Deal Details</h2>
-        <button type="button" onClick={loadDemoData} className="btn-secondary text-xs px-3 py-1.5">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4 sm:mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-neutral-900">Deal Details</h2>
+        <button type="button" onClick={loadDemoData} className="btn-secondary text-xs px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0">
           Load Demo Data
         </button>
       </div>
 
       {/* Section 1 — Company & Contact */}
-      <div className="card p-6 mb-4">
+      <div className="card p-4 sm:p-6 mb-4">
         <h3 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wide">Company & Contact</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -176,7 +176,7 @@ export default function LOIForm({ onGenerate, isGenerating }) {
       </div>
 
       {/* Section 2 — Platform Details */}
-      <div className="card p-6 mb-4" style={{ background: 'var(--neutral-50)' }}>
+      <div className="card p-4 sm:p-6 mb-4" style={{ background: 'var(--neutral-50)' }}>
         <h3 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wide">Platform Details</h3>
         <div className="mb-4">
           <label className="form-label">Platform Use Case</label>
@@ -195,7 +195,7 @@ export default function LOIForm({ onGenerate, isGenerating }) {
             {MODULES.map(mod => (
               <label
                 key={mod.id}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors touch-manipulation ${
                   form.modules.includes(mod.id)
                     ? 'border-teal-primary bg-teal-primary/5'
                     : 'border-neutral-200 hover:border-neutral-700/20'
@@ -205,11 +205,11 @@ export default function LOIForm({ onGenerate, isGenerating }) {
                   type="checkbox"
                   checked={form.modules.includes(mod.id)}
                   onChange={() => handleModuleToggle(mod.id)}
-                  className="mt-0.5 w-4 h-4 accent-teal-primary"
+                  className="mt-0.5 w-4 h-4 sm:w-5 sm:h-5 accent-teal-primary flex-shrink-0"
                 />
-                <div>
+                <div className="min-w-0">
                   <span className="text-sm font-medium text-neutral-900">{mod.label}</span>
-                  <span className="text-xs text-neutral-700 ml-2">— {mod.desc}</span>
+                  <span className="text-xs text-neutral-700 block sm:inline sm:ml-2">— {mod.desc}</span>
                 </div>
               </label>
             ))}
@@ -219,7 +219,7 @@ export default function LOIForm({ onGenerate, isGenerating }) {
       </div>
 
       {/* Section 3 — Commercial Terms */}
-      <div className="card p-6 mb-4">
+      <div className="card p-4 sm:p-6 mb-4">
         <h3 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wide">Commercial Terms</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -287,7 +287,7 @@ export default function LOIForm({ onGenerate, isGenerating }) {
       </div>
 
       {/* Section 4 — Additional Context */}
-      <div className="card p-6 mb-6" style={{ background: 'var(--neutral-50)' }}>
+      <div className="card p-4 sm:p-6 mb-6" style={{ background: 'var(--neutral-50)' }}>
         <h3 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wide">Additional Context</h3>
         <div className="mb-4">
           <label className="form-label">Other / Notes</label>

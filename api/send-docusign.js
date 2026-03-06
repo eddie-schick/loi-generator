@@ -20,9 +20,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Not authenticated with DocuSign. Please connect first.' });
   }
 
-  const { loiText, companyName, signerEmail, signerName, personalMessage } = req.body;
+  const { loiText, pdfBase64, companyName, signerEmail, signerName, personalMessage } = req.body;
 
-  if (!loiText || !companyName || !signerEmail || !signerName) {
+  if (!companyName || !signerEmail || !signerName || (!loiText && !pdfBase64)) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
@@ -39,15 +39,25 @@ export default async function handler(req, res) {
     const shaedSignerEmail = process.env.SHAED_SIGNER_EMAIL;
     const shaedSignerName = process.env.SHAED_SIGNER_NAME;
 
+    // Use styled PDF if provided, otherwise fall back to plain text
+    const document = pdfBase64
+      ? {
+          documentBase64: pdfBase64,
+          name: `SHAED_LOI_${companyName.replace(/\s+/g, '_')}_${dateStr}.pdf`,
+          fileExtension: 'pdf',
+          documentId: '1',
+        }
+      : {
+          documentBase64: Buffer.from(loiText).toString('base64'),
+          name: `SHAED_LOI_${companyName.replace(/\s+/g, '_')}_${dateStr}.txt`,
+          fileExtension: 'txt',
+          documentId: '1',
+        };
+
     const envelope = {
       emailSubject: `LOI: SHAED Inc. × ${companyName} — Please Sign`,
       emailBlurb: personalMessage || `Please review and sign the attached Letter of Intent from SHAED Inc.`,
-      documents: [{
-        documentBase64: Buffer.from(loiText).toString('base64'),
-        name: `SHAED_LOI_${companyName.replace(/\s+/g, '_')}_${dateStr}.txt`,
-        fileExtension: 'txt',
-        documentId: '1',
-      }],
+      documents: [document],
       recipients: {
         signers: [
           {

@@ -20,23 +20,23 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white border-b border-neutral-200 px-6 py-4">
-      <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <div className="flex items-center">
+    <header className="bg-white border-b border-neutral-200 px-4 py-3 sm:px-6 sm:py-4">
+      <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 min-w-0">
+        <div className="flex items-center min-w-0 flex-shrink">
           {logoError ? (
-            <span className="text-3xl font-bold tracking-tight" style={{ color: '#3B8C7D' }}>SHAED</span>
+            <span className="text-xl sm:text-3xl font-bold tracking-tight truncate" style={{ color: '#3B8C7D' }}>SHAED</span>
           ) : (
             <img
               src={logoSrc}
               alt="SHAED"
-              className="h-12 w-auto"
+              className="h-9 w-auto sm:h-12"
               style={{ maxHeight: '52px' }}
               onError={handleLogoError}
             />
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-neutral-700 font-medium">LOI Generator</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-xs sm:text-sm text-neutral-700 font-medium whitespace-nowrap">LOI Generator</span>
         </div>
       </div>
     </header>

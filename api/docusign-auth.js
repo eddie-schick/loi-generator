@@ -1,5 +1,7 @@
 export default function handler(req, res) {
-  const baseUrl = 'https://account.docusign.com';
+  const baseUrl = process.env.DOCUSIGN_BASE_URL?.includes('demo')
+    ? 'https://account-d.docusign.com'
+    : 'https://account.docusign.com';
 
   const authUrl = `${baseUrl}/oauth/auth?` +
     `response_type=code` +
