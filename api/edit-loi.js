@@ -1,11 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { generateLOIPdf } from './pdf-generator.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { existingLOI, editInstruction } = req.body;
+  const { existingLOI, editInstruction, dealData } = req.body;
 
   if (!existingLOI || !editInstruction) {
     return res.status(400).json({ error: 'existingLOI and editInstruction are required' });
@@ -31,7 +32,10 @@ Return ONLY the complete revised LOI text. No preamble, no explanation, no comme
     });
 
     const revisedLOI = response.content[0].text;
-    res.status(200).json({ loi: revisedLOI });
+
+    // Regenerate PDF from revised text
+    const pdfBase64 = await generateLOIPdf(revisedLOI, dealData || {});
+    res.status(200).json({ text: revisedLOI, pdfBase64 });
 
   } catch (error) {
     console.error('Edit LOI error:', error);

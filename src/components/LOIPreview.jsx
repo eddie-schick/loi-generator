@@ -1,645 +1,75 @@
-import { useState, useMemo } from 'react';
-import { jsPDF } from 'jspdf';
+import { useState, useEffect, useCallback } from 'react';
 
-const DOCU_SIGN_ANCHORS = ['/sig1/', '/sig2/', '/date1/', '/date2/'];
-// Logo/icon in public/ folder (spaces URL-encoded)
-const LOGO_PNG = '/SHAED%20Logo%20-%20Updated.png';
-const LOGO_SVG = '/SHAED%20Logo.svg';
-const ICON_PNG = '/SHAED%20Icon%20-%20Updated.png';
-
-/** Letterhead logo: try PNG, then SVG, then icon, fallback to wordmark text */
-function LOILetterheadLogo() {
-  const [src, setSrc] = useState(LOGO_PNG);
-  const [failed, setFailed] = useState(false);
-
-  const handleError = () => {
-    if (src === LOGO_PNG) {
-      setSrc(LOGO_SVG);
-    } else if (src === LOGO_SVG) {
-      setSrc(ICON_PNG);
-    } else {
-      setFailed(true);
-    }
-  };
-
-  if (failed) {
-    return <span className="loi-letterhead-wordmark">SHAED</span>;
-  }
-  return (
-    <img
-      src={src}
-      alt="SHAED"
-      className="loi-letterhead-logo"
-      onError={handleError}
-    />
-  );
-}
-
-function isAllCapsSection(line) {
-  const t = line.trim();
-  if (t.length < 2) return false;
-  if (!/[A-Z]/.test(t)) return false;
-  return t === t.toUpperCase();
-}
-
-function isListItem(line) {
-  const t = line.trim();
-  return /^[•\-]\s/.test(t) || (t.startsWith('-') && t.length > 1);
-}
-
-function stripListPrefix(line) {
-  return line.trim().replace(/^[•\-]\s*/, '');
-}
-
-/** Renders inline content: **bold** and invisible DocuSign anchors */
-function renderInline(text, keyPrefix) {
-  const nodes = [];
-  let key = 0;
-  const anchorRe = /(\/sig1\/|\/sig2\/|\/date1\/|\/date2\/)/g;
-  let lastIndex = 0;
-  let m;
-  while ((m = anchorRe.exec(text)) !== null) {
-    if (m.index > lastIndex) {
-      nodes.push(...renderBoldFragments(text.slice(lastIndex, m.index), `${keyPrefix}-${key++}`));
-    }
-    nodes.push(
-      <span key={`${keyPrefix}-${key++}`} className="loi-docusign-anchor" aria-hidden="true">
-        {m[1]}
-      </span>
-    );
-    lastIndex = m.index + m[1].length;
-  }
-  if (lastIndex < text.length) {
-    nodes.push(...renderBoldFragments(text.slice(lastIndex), `${keyPrefix}-${key++}`));
-  }
-  return nodes;
-}
-
-function renderBoldFragments(str, keyPrefix) {
-  const parts = [];
-  const re = /\*\*([^*]+)\*\*/g;
-  let lastIndex = 0;
-  let key = 0;
-  let match;
-  while ((match = re.exec(str)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(<span key={`${keyPrefix}-b-${key++}`}>{str.slice(lastIndex, match.index)}</span>);
-    }
-    parts.push(<strong key={`${keyPrefix}-b-${key++}`}>{match[1]}</strong>);
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < str.length) {
-    parts.push(<span key={`${keyPrefix}-b-${key++}`}>{str.slice(lastIndex)}</span>);
-  }
-  return parts.length ? parts : [str];
-}
-
-/** Detect if a string contains both customer and SHAED signature anchors */
-function isSignatureBlock(text) {
-  return /\/sig1\//.test(text) && /\/sig2\//.test(text);
-}
-
-/** Match date line (e.g. "March 5, 2026") */
-function isDateLine(text) {
-  return /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}$/.test(text.trim());
-}
-
-/** Match second letterhead line (city | website) */
-function isLetterheadLocationLine(text) {
-  const t = text.trim();
-  return (t.includes('Minneapolis') && t.includes('shaed.ai')) || (t.includes('|') && /shaed\.ai/i.test(t));
-}
-
-/** Match first letterhead line */
-function isLetterheadCompanyLine(text) {
-  return /^SHAED\s+Inc\.?$/i.test(text.trim());
-}
-
-/** Parse LOI text into blocks: spacer, section, list, paragraph, signature, letterhead */
-function parseLOIBlocks(text) {
-  const lines = text.split(/\r?\n/);
-  const blocks = [];
-  let listBuffer = [];
-
-  function flushList() {
-    if (listBuffer.length) {
-      blocks.push({ type: 'list', items: listBuffer });
-      listBuffer = [];
-    }
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const trimmed = raw.trim();
-
-    if (trimmed === '') {
-      flushList();
-      blocks.push({ type: 'spacer' });
-      continue;
-    }
-
-    if (isAllCapsSection(trimmed)) {
-      flushList();
-      blocks.push({ type: 'section', text: trimmed });
-      continue;
-    }
-
-    if (isListItem(raw)) {
-      listBuffer.push(stripListPrefix(raw));
-      continue;
-    }
-
-    if (isSignatureBlock(trimmed)) {
-      flushList();
-      blocks.push({ type: 'signature', text: trimmed });
-      continue;
-    }
-
-    // Collect consecutive lines that together form a signature block (e.g. LEFT on one line, RIGHT on next)
-    if (/\/sig1\//.test(trimmed)) {
-      const sigLines = [trimmed];
-      let j = i + 1;
-      while (j < lines.length && lines[j].trim() !== '' && !isSignatureBlock(sigLines.join(' '))) {
-        sigLines.push(lines[j].trim());
-        j++;
-      }
-      if (isSignatureBlock(sigLines.join(' '))) {
-        flushList();
-        blocks.push({ type: 'signature', text: sigLines.join(' ') });
-        i = j - 1;
-        continue;
-      }
-    }
-
-    // Letterhead block: SHAED Inc. / Minneapolis, MN | shaed.ai / Date — only at start (after optional spacers)
-    const onlySpacersSoFar = blocks.every(b => b.type === 'spacer');
-    if (onlySpacersSoFar && isLetterheadCompanyLine(trimmed)) {
-      const letterheadLines = [trimmed];
-      let j = i + 1;
-      // skip blank lines, then collect location line and date line
-      while (j < lines.length && lines[j].trim() === '') j++;
-      if (j < lines.length && isLetterheadLocationLine(lines[j].trim())) {
-        letterheadLines.push(lines[j].trim());
-        j++;
-        while (j < lines.length && lines[j].trim() === '') j++;
-        if (j < lines.length && isDateLine(lines[j])) {
-          letterheadLines.push(lines[j].trim());
-          j++;
-          flushList();
-          // remove any leading spacers that are part of "start of document"
-          while (blocks.length && blocks[blocks.length - 1].type === 'spacer') blocks.pop();
-          blocks.push({ type: 'letterhead', lines: letterheadLines });
-          i = j - 1;
-          continue;
-        }
-      }
-    }
-
-    flushList();
-    blocks.push({ type: 'paragraph', text: trimmed });
-  }
-  flushList();
-  return blocks;
-}
-
-/** SHAED signatory display names */
-const SHAED_SIGNATORY = {
-  ryan: { name: 'Ryan Pritchard', title: 'CEO & Co-Founder' },
-  eddie: { name: 'Eddie Schick', title: 'COO & Co-Founder' },
-};
-
-/** Strip **bold** and DocuSign anchors for plain PDF text */
-function stripForPdf(text) {
-  if (!text) return '';
-  return text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\/sig1\/|\/sig2\/|\/date1\/|\/date2\//g, '');
-}
-
-/** True if this paragraph is redundant with our single signature block (avoids duplication in PDF/preview) */
-function isRedundantSignatureParagraph(text, dealData) {
-  const t = text.trim();
-  const plain = stripForPdf(t);
-  if (!plain || !plain.trim()) return true; // only anchors
-  const lower = plain.trim().toLowerCase();
-
-  // Exact matches for common signature-area labels
-  const redundant = [
-    'printed name', 'title', 'date:', 'date', 'signature', 'signature:',
-    'counterparty', 'shaed inc.', 'shaed inc'
-  ];
-  if (redundant.includes(lower)) return true;
-
-  // "Date: Date:" or multiple date labels on one line
-  if (/^(date:?\s*)+$/i.test(lower)) return true;
-
-  // Company names (exact or combined on one line)
-  const companyName = dealData?.companyName?.trim();
-  if (companyName && lower.includes(companyName.toLowerCase()) && lower.includes('shaed')) return true;
-  if (companyName && plain.trim() === companyName) return true;
-  if (/^SHAED\s+Inc\.?$/i.test(plain.trim())) return true;
-
-  // Signatory names/titles — individual or combined on one line
-  const leftName = dealData?.signorName?.trim() || '';
-  const leftTitle = dealData?.signorTitle?.trim() || '';
-  const leftSignatory = leftName + (leftTitle ? `, ${leftTitle}` : '');
-  const ryan = SHAED_SIGNATORY.ryan.name + ', ' + SHAED_SIGNATORY.ryan.title;
-  const eddie = SHAED_SIGNATORY.eddie.name + ', ' + SHAED_SIGNATORY.eddie.title;
-
-  // Check if line contains both a left signatory part and a SHAED signatory part (combined line)
-  const hasLeftPart = leftName && lower.includes(leftName.toLowerCase());
-  const hasRightPart = lower.includes('ryan pritchard') || lower.includes('eddie schick');
-  if (hasLeftPart && hasRightPart) return true;
-
-  // Exact matches for individual names/titles
-  const exactChecks = [
-    leftSignatory, leftName, leftTitle,
-    ryan, eddie,
-    SHAED_SIGNATORY.ryan.name, SHAED_SIGNATORY.eddie.name,
-    SHAED_SIGNATORY.ryan.title, SHAED_SIGNATORY.eddie.title,
-  ].filter(Boolean);
-  if (exactChecks.some(c => plain.trim() === c)) return true;
-
-  // "Name, Title, Date:" patterns
-  if (exactChecks.some(c => plain.trim() === `${c}, Date:` || plain.trim() === `${c}, Date`)) return true;
-
-  // Lines that are mostly signature/date labels with names (catch-all for combined sig lines)
-  if (/^(signature|printed name|title|date):?\s/i.test(lower) && lower.length < 100) return true;
-
-  return false;
-}
-
-/** Extract signature block labels from raw block text (same logic as SignatureBlock) */
-function getSignatureLabels(text) {
-  const hasRightPart = /\s*RIGHT\s*—\s*/i.test(text);
-  let leftLabel = 'Counterparty';
-  let rightLabel = 'SHAED Inc.';
-  if (hasRightPart) {
-    const leftRight = text.split(/\s*RIGHT\s*—\s*/i);
-    const leftPart = leftRight[0] || '';
-    const rightPart = leftRight.length > 1 ? leftRight.slice(1).join(' RIGHT — ') : '';
-    leftLabel = leftPart.replace(/^LEFT\s*—\s*/i, '').split(/\s*:\s*Signature/i)[0].trim() || leftLabel;
-    rightLabel = rightPart.replace(/^RIGHT\s*—\s*/i, '').split(/\s*:\s*Signature/i)[0].trim() || rightLabel;
-  }
-  return { leftLabel, rightLabel };
-}
-
-/** Load logo from public URL and return { dataUrl, widthMm, heightMm } for PDF. Resolves to null if load fails. */
-export function loadLogoForPdf() {
-  const logoUrl = '/SHAED%20Logo%20-%20Updated.png';
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL('image/png');
-        const heightMm = 10;
-        const widthMm = heightMm * (img.naturalWidth / img.naturalHeight);
-        resolve({ dataUrl, widthMm, heightMm });
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = logoUrl;
-  });
-}
-
-/**
- * Build a jsPDF document from LOI text in the same format as the preview.
- * Signature blocks are cleaned (no /sig1/, /date1/, etc.) with two-column layout.
- * Only the first signature block is rendered to avoid duplicates.
- * @param {object} logo - Optional { dataUrl, widthMm, heightMm } to place at top
- */
-export function buildLOIPdf(text, dealData, logo = null) {
-  const doc = new jsPDF({ unit: 'mm' });
-  const margin = 20;
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const maxWidth = pageWidth - margin * 2;
-  const lineHeight = 5.5;
-  const spacerHeight = 3;
-  const font = 'times';
-  const bodySize = 11;
-  const sectionSize = 12;
-  const teal = [59, 140, 125];
-
-  let y = margin;
-
-  function checkPageBreak(needed = 15) {
-    if (y > pageHeight - margin - needed) {
-      doc.addPage();
-      y = margin;
-    }
-  }
-
-  // Logo at top
-  if (logo?.dataUrl) {
-    doc.addImage(logo.dataUrl, 'PNG', margin, y, logo.widthMm, logo.heightMm);
-    y += logo.heightMm + 4;
-    doc.setDrawColor(...teal);
-    doc.setLineWidth(0.2);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 6;
-  }
-
-  const blocks = parseLOIBlocks(text);
-  const shaedSignatory = dealData?.shaedSignatory === 'eddie' ? SHAED_SIGNATORY.eddie : SHAED_SIGNATORY.ryan;
-  const leftName = dealData?.signorName || 'Printed Name';
-  const leftTitle = dealData?.signorTitle || 'Title';
-  let signatureRendered = false;
-
-  for (const block of blocks) {
-    // Once we've rendered the signature block, skip everything after it
-    if (signatureRendered && block.type !== 'signature') continue;
-
-    if (block.type === 'spacer') {
-      y += spacerHeight;
-      continue;
-    }
-
-    if (block.type === 'letterhead') {
-      checkPageBreak(25);
-      doc.setFont(font, 'bold');
-      doc.setFontSize(bodySize);
-      doc.setTextColor(0, 0, 0);
-      if (block.lines[0]) {
-        doc.text(stripForPdf(block.lines[0]), margin, y);
-        y += lineHeight;
-      }
-      doc.setFont(font, 'normal');
-      for (let i = 1; i < block.lines.length; i++) {
-        doc.text(stripForPdf(block.lines[i]), margin, y);
-        y += lineHeight;
-      }
-      y += lineHeight;
-      continue;
-    }
-
-    if (block.type === 'section') {
-      // Skip redundant section headers that duplicate our signature block labels
-      const sectionText = stripForPdf(block.text).trim();
-      const companyUpper = dealData?.companyName?.trim().toUpperCase();
-      if (companyUpper && sectionText === companyUpper) continue;
-      if (/^SHAED\s+INC\.?$/i.test(sectionText)) continue;
-      if (/^COUNTERPARTY$/i.test(sectionText)) continue;
-      checkPageBreak(20);
-      doc.setFont(font, 'bold');
-      doc.setFontSize(sectionSize);
-      doc.setTextColor(...teal);
-      doc.text(sectionText, margin, y);
-      y += 6;
-      doc.setDrawColor(...teal);
-      doc.setLineWidth(0.3);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 4;
-      doc.setFont(font, 'normal');
-      doc.setFontSize(bodySize);
-      doc.setTextColor(0, 0, 0);
-      y += lineHeight;
-      continue;
-    }
-
-    if (block.type === 'paragraph') {
-      if (isRedundantSignatureParagraph(block.text, dealData)) continue;
-      const plain = stripForPdf(block.text);
-      const lines = doc.splitTextToSize(plain, maxWidth);
-      for (const line of lines) {
-        checkPageBreak();
-        doc.setFont(font, 'normal');
-        doc.setFontSize(bodySize);
-        doc.setTextColor(0, 0, 0);
-        doc.text(line, margin, y);
-        y += lineHeight;
-      }
-      y += lineHeight * 0.5;
-      continue;
-    }
-
-    if (block.type === 'list') {
-      const items = block.items.filter((item) => !isRedundantSignatureParagraph(item, dealData));
-      if (items.length === 0) continue;
-      doc.setFont(font, 'normal');
-      doc.setFontSize(bodySize);
-      doc.setTextColor(0, 0, 0);
-      for (const item of items) {
-        const plain = stripForPdf(item);
-        const lines = doc.splitTextToSize(plain, maxWidth - 6);
-        checkPageBreak();
-        doc.text('•', margin, y);
-        doc.text(lines[0] || '', margin + 6, y);
-        y += lineHeight;
-        for (let i = 1; i < lines.length; i++) {
-          checkPageBreak();
-          doc.text(lines[i], margin + 6, y);
-          y += lineHeight;
-        }
-      }
-      y += lineHeight * 0.5;
-      continue;
-    }
-
-    if (block.type === 'signature') {
-      if (signatureRendered) continue;
-      signatureRendered = true;
-      checkPageBreak(45);
-      const { leftLabel, rightLabel } = getSignatureLabels(block.text);
-      const colWidth = (pageWidth - margin * 2 - 20) / 2;
-      const leftX = margin;
-      const rightX = margin + colWidth + 20;
-      const metaSize = 9;
-      const sigStartY = y;
-
-      // Left column
-      doc.setFont(font, 'bold');
-      doc.setFontSize(bodySize);
-      doc.setTextColor(0, 0, 0);
-      doc.text(leftLabel, leftX, y);
-      y += 5;
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.2);
-      doc.line(leftX, y, leftX + colWidth, y);
-      y += 6;
-      doc.setFont(font, 'normal');
-      doc.setFontSize(metaSize);
-      doc.text(leftName, leftX, y);
-      y += 4;
-      doc.text(leftTitle, leftX, y);
-      y += 5;
-      doc.text('Date:', leftX, y);
-      y += 4;
-      const dateLineLength = 45;
-      doc.line(leftX, y, leftX + dateLineLength, y);
-      const leftBottom = y + 6;
-
-      // Right column (same vertical layout, starting at sigStartY)
-      y = sigStartY;
-      doc.setFont(font, 'bold');
-      doc.setFontSize(bodySize);
-      doc.text(rightLabel, rightX, y);
-      y += 5;
-      doc.line(rightX + colWidth - 80, y, rightX + colWidth, y);
-      y += 6;
-      doc.setFont(font, 'normal');
-      doc.setFontSize(metaSize);
-      doc.text(shaedSignatory.name, rightX, y);
-      y += 4;
-      doc.text(shaedSignatory.title, rightX, y);
-      y += 5;
-      doc.text('Date:', rightX, y);
-      y += 4;
-      doc.line(rightX + colWidth - dateLineLength, y, rightX + colWidth, y);
-      y = Math.max(leftBottom, y + 6);
-      continue;
-    }
-  }
-
-  return doc;
-}
-
-/** Two-column signature block: customer left, SHAED right, with lines for DocuSign */
-function SignatureBlock({ text, dealData }) {
-  const hasRightPart = /\s*RIGHT\s*—\s*/i.test(text);
-  let leftLabel = 'Counterparty';
-  let rightLabel = 'SHAED Inc.';
-
-  if (hasRightPart) {
-    const leftRight = text.split(/\s*RIGHT\s*—\s*/i);
-    const leftPart = leftRight[0] || '';
-    const rightPart = leftRight.length > 1 ? leftRight.slice(1).join(' RIGHT — ') : '';
-    leftLabel = leftPart.replace(/^LEFT\s*—\s*/i, '').split(/\s*:\s*Signature/i)[0].trim() || leftLabel;
-    rightLabel = rightPart.replace(/^RIGHT\s*—\s*/i, '').split(/\s*:\s*Signature/i)[0].trim() || rightLabel;
-  }
-
-  const shaedSignatory = dealData?.shaedSignatory === 'eddie' ? SHAED_SIGNATORY.eddie : SHAED_SIGNATORY.ryan;
-  const leftName = dealData?.signorName || 'Printed Name';
-  const leftTitle = dealData?.signorTitle || 'Title';
-  const rightName = shaedSignatory.name;
-  const rightTitle = shaedSignatory.title;
-
-  return (
-    <div className="loi-signature-block">
-      <div className="loi-sig-col loi-sig-col-left">
-        <div className="loi-sig-label">{leftLabel}</div>
-        <div className="loi-sig-line">
-          <span className="loi-docusign-anchor" aria-hidden="true">/sig1/</span>
-        </div>
-        <div className="loi-sig-meta">{leftName}</div>
-        <div className="loi-sig-meta">{leftTitle}</div>
-        <div className="loi-sig-meta loi-sig-date-label">Date</div>
-        <div className="loi-sig-line loi-sig-date-line">
-          <span className="loi-docusign-anchor" aria-hidden="true">/date1/</span>
-        </div>
-      </div>
-      <div className="loi-sig-col loi-sig-col-right">
-        <div className="loi-sig-label">{rightLabel}</div>
-        <div className="loi-sig-line">
-          <span className="loi-docusign-anchor" aria-hidden="true">/sig2/</span>
-        </div>
-        <div className="loi-sig-meta">{rightName}</div>
-        <div className="loi-sig-meta">{rightTitle}</div>
-        <div className="loi-sig-meta loi-sig-date-label">Date</div>
-        <div className="loi-sig-line loi-sig-date-line">
-          <span className="loi-docusign-anchor" aria-hidden="true">/date2/</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RenderedLOI({ text, dealData }) {
-  const blocks = useMemo(() => parseLOIBlocks(text), [text]);
-  let signatureRendered = false;
-  return (
-    <div className="loi-document-body">
-      {blocks.map((block, i) => {
-        // Once signature is rendered, skip everything after it
-        if (signatureRendered && block.type !== 'signature') return null;
-
-        if (block.type === 'spacer') {
-          return <div key={i} className="loi-paragraph-spacer" />;
-        }
-        if (block.type === 'signature') {
-          if (signatureRendered) return null;
-          signatureRendered = true;
-          return <SignatureBlock key={i} text={block.text} dealData={dealData} />;
-        }
-        if (block.type === 'section') {
-          const sectionText = (block.text || '').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
-          const companyUpper = dealData?.companyName?.trim().toUpperCase();
-          if (companyUpper && sectionText === companyUpper) return null;
-          if (/^SHAED\s+INC\.?$/i.test(sectionText)) return null;
-          if (/^COUNTERPARTY$/i.test(sectionText)) return null;
-          return (
-            <div key={i} className="loi-section-header">
-              {renderInline(block.text, `s-${i}`)}
-            </div>
-          );
-        }
-        if (block.type === 'list') {
-          const items = block.items.filter((item) => !isRedundantSignatureParagraph(item, dealData));
-          if (items.length === 0) return null;
-          return (
-            <ul key={i} className="loi-list-wrap">
-              {items.map((item, j) => (
-                <li key={j} className="loi-list-item">
-                  {renderInline(item, `l-${i}-${j}`)}
-                </li>
-              ))}
-            </ul>
-          );
-        }
-        if (block.type === 'paragraph') {
-          if (isRedundantSignatureParagraph(block.text, dealData)) return null;
-          return (
-            <p key={i} className="loi-body-paragraph">
-              {renderInline(block.text, `p-${i}`)}
-            </p>
-          );
-        }
-        if (block.type === 'letterhead') {
-          return (
-            <div key={i} className="loi-letterhead-block">
-              {block.lines.map((line, j) => (
-                <div key={j} className="loi-letterhead-line">
-                  {renderInline(line, `letter-${i}-${j}`)}
-                </div>
-              ))}
-            </div>
-          );
-        }
-        return null;
-      })}
-    </div>
-  );
-}
-
-export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, onSendForSignature, isRegenerating }) {
+export default function LOIPreview({ loiText, pdfBase64: initialPdfBase64, dealData, onBack, onRegenerate, onSendForSignature, isRegenerating }) {
   const [revisionHistory, setRevisionHistory] = useState([
-    { version: 1, text: loiText }
+    { version: 1, text: loiText, pdfBase64: initialPdfBase64 }
   ]);
   const [currentVersion, setCurrentVersion] = useState(1);
   const [isEditing, setIsEditing] = useState(false);
   const [editInstruction, setEditInstruction] = useState('');
   const [isRevising, setIsRevising] = useState(false);
   const [revisionError, setRevisionError] = useState('');
+  const [isRenderingPdf, setIsRenderingPdf] = useState(false);
 
-  const currentText = revisionHistory.find(r => r.version === currentVersion)?.text || loiText;
+  const current = revisionHistory.find(r => r.version === currentVersion);
+  const currentText = current?.text || loiText || '';
+  const currentPdf = current?.pdfBase64 || null;
   const charCount = currentText.length;
+
+  // When switching from edit to preview with a dirty PDF, regenerate server-side
+  const regeneratePdf = useCallback(async (text) => {
+    setIsRenderingPdf(true);
+    try {
+      const res = await fetch('/api/render-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, dealData }),
+      });
+      const data = await res.json();
+      if (res.ok && data.pdfBase64) {
+        setRevisionHistory(prev =>
+          prev.map(r => r.version === currentVersion ? { ...r, pdfBase64: data.pdfBase64 } : r)
+        );
+      }
+    } catch (err) {
+      console.error('PDF render error:', err);
+    } finally {
+      setIsRenderingPdf(false);
+    }
+  }, [currentVersion, dealData]);
+
+  // Auto-regenerate PDF when switching to preview and PDF is stale
+  useEffect(() => {
+    if (!isEditing && !currentPdf && currentText && !isRenderingPdf) {
+      regeneratePdf(currentText);
+    }
+  }, [isEditing, currentPdf, currentText, isRenderingPdf, regeneratePdf]);
 
   function handleTextEdit(e) {
     const newText = e.target.value;
     setRevisionHistory(prev =>
-      prev.map(r => r.version === currentVersion ? { ...r, text: newText } : r)
+      prev.map(r => r.version === currentVersion ? { ...r, text: newText, pdfBase64: null } : r)
     );
   }
 
-  function handleSend() {
-    onSendForSignature(currentText);
+  async function handleSend() {
+    let pdf = currentPdf;
+    if (!pdf) {
+      // Regenerate PDF before sending
+      setIsRenderingPdf(true);
+      try {
+        const res = await fetch('/api/render-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: currentText, dealData }),
+        });
+        const data = await res.json();
+        if (res.ok) pdf = data.pdfBase64;
+      } catch { /* fall through */ } finally {
+        setIsRenderingPdf(false);
+      }
+    }
+    onSendForSignature(currentText, pdf);
   }
 
   function handleRegenerate() {
@@ -659,6 +89,7 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
         body: JSON.stringify({
           existingLOI: currentText,
           editInstruction: editInstruction.trim(),
+          dealData,
         }),
       });
 
@@ -669,7 +100,11 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
       }
 
       const newVersion = revisionHistory.length + 1;
-      setRevisionHistory(prev => [...prev, { version: newVersion, text: data.loi }]);
+      setRevisionHistory(prev => [...prev, {
+        version: newVersion,
+        text: data.text,
+        pdfBase64: data.pdfBase64,
+      }]);
       setCurrentVersion(newVersion);
       setEditInstruction('');
     } catch (err) {
@@ -677,6 +112,22 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
     } finally {
       setIsRevising(false);
     }
+  }
+
+  function handleDownloadPdf() {
+    if (!currentPdf) return;
+    const byteChars = atob(currentPdf);
+    const byteNumbers = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      byteNumbers[i] = byteChars.charCodeAt(i);
+    }
+    const blob = new Blob([byteNumbers], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // Build module chips from deal data
@@ -756,13 +207,24 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
                 className="w-full min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] font-mono text-sm leading-relaxed p-3 sm:p-4 border border-neutral-200 rounded-lg focus:border-teal-primary focus:ring-1 focus:ring-teal-primary/20 outline-none resize-y"
                 style={{ fontFamily: "'Courier New', monospace", fontSize: '0.8125rem' }}
               />
+            ) : isRenderingPdf ? (
+              <div className="flex items-center justify-center min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] bg-neutral-50 rounded-lg">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="spinner !w-8 !h-8 !border-3"></span>
+                  <span className="text-sm text-neutral-700">Rendering PDF...</span>
+                </div>
+              </div>
+            ) : currentPdf ? (
+              <iframe
+                src={`data:application/pdf;base64,${currentPdf}`}
+                width="100%"
+                height="800px"
+                style={{ border: 'none', borderRadius: '8px' }}
+                title="LOI Preview"
+              />
             ) : (
-              <div className="loi-document-page min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] rounded-lg overflow-hidden">
-                <header className="loi-letterhead">
-                  <LOILetterheadLogo />
-                </header>
-                <div className="loi-letterhead-divider" />
-                <RenderedLOI text={currentText} dealData={dealData} />
+              <div className="flex items-center justify-center min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] bg-neutral-50 rounded-lg">
+                <span className="text-sm text-neutral-500">PDF preview not available</span>
               </div>
             )}
           </div>
@@ -848,26 +310,9 @@ export default function LOIPreview({ loiText, dealData, onBack, onRegenerate, on
             <h4 className="text-sm font-semibold text-neutral-900 mb-3">Quick Actions</h4>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => {
-                  const blob = new Blob([currentText], { type: 'text/plain' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="text-sm text-teal-primary hover:text-teal-dark font-medium text-left"
-              >
-                Download LOI (.txt)
-              </button>
-              <button
-                onClick={async () => {
-                  const logo = await loadLogoForPdf();
-                  const doc = buildLOIPdf(currentText, dealData, logo);
-                  doc.save(`SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
-                }}
-                className="text-sm text-teal-primary hover:text-teal-dark font-medium text-left"
+                onClick={handleDownloadPdf}
+                disabled={!currentPdf}
+                className="text-sm text-teal-primary hover:text-teal-dark font-medium text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Download LOI (.pdf)
               </button>

@@ -14,7 +14,7 @@ const SEGMENTS = [
 const MODULES = [
   { id: 'shop', label: 'Shop', desc: 'Marketplace & customer acquisition' },
   { id: 'track', label: 'Track', desc: 'Real-time order tracking & network orchestration' },
-  { id: 'document', label: 'Document', desc: 'AI-powered deal jacket processing (99.84% accuracy)' },
+  { id: 'document', label: 'Document', desc: 'AI-powered deal jacket processing' },
 ];
 
 const DEMO_DATA = {
@@ -29,7 +29,7 @@ const DEMO_DATA = {
   subscriptionFee: '',
   implementation: 'yes',
   implementationFee: '15000',
-  discoveryPeriod: '30 days',
+  discoveryPeriod: '90 days',
   other: 'Strong network effect fit — Summit supplies 8 dealers who are existing Pritchard Companies partners on SHAED. Warm introduction through Ryan Pritchard.',
   shaedSignatory: 'ryan',
 };
@@ -47,7 +47,7 @@ function getInitialFormData() {
     subscriptionFee: '',
     implementation: 'no',
     implementationFee: '25000',
-    discoveryPeriod: '',
+    discoveryPeriod: '90 days',
     other: '',
     shaedSignatory: 'ryan',
   };

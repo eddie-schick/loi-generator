@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { buildLOIPdf, loadLogoForPdf } from './LOIPreview';
 
 const STATUS_COLORS = {
   created: 'bg-neutral-200 text-neutral-700',
@@ -11,7 +10,7 @@ const STATUS_COLORS = {
   voided: 'bg-neutral-200 text-neutral-700',
 };
 
-export default function SignaturePanel({ loiText, dealData, isDocuSignConnected, onStartNew }) {
+export default function SignaturePanel({ loiText, pdfBase64, dealData, isDocuSignConnected, onStartNew }) {
   const [recipientEmail, setRecipientEmail] = useState(dealData.signorEmail || dealData.contactEmail || '');
   const [recipientName, setRecipientName] = useState(
     dealData.signorName || `${dealData.contactFirstName || ''} ${dealData.contactLastName || ''}`.trim()
@@ -53,11 +52,6 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
     setError('');
 
     try {
-      // Generate styled PDF on the client
-      const logo = await loadLogoForPdf();
-      const pdfDoc = buildLOIPdf(loiText, dealData, logo);
-      const pdfBase64 = pdfDoc.output('datauristring').split(',')[1];
-
       const res = await fetch('/api/send-docusign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -94,6 +88,22 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
 
   function handleConnectDocuSign() {
     window.location.href = '/api/docusign-auth';
+  }
+
+  function handleDownloadPdf() {
+    if (!pdfBase64) return;
+    const byteChars = atob(pdfBase64);
+    const byteNumbers = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      byteNumbers[i] = byteChars.charCodeAt(i);
+    }
+    const blob = new Blob([byteNumbers], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // Not authenticated state
@@ -156,25 +166,8 @@ export default function SignaturePanel({ loiText, dealData, isDocuSignConnected,
               Start New LOI
             </button>
             <button
-              onClick={() => {
-                const blob = new Blob([loiText], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="btn-secondary py-2.5"
-            >
-              Download LOI (.txt)
-            </button>
-            <button
-              onClick={async () => {
-                const logo = await loadLogoForPdf();
-                const doc = buildLOIPdf(loiText, dealData, logo);
-                doc.save(`SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
-              }}
+              onClick={handleDownloadPdf}
+              disabled={!pdfBase64}
               className="btn-secondary py-2.5"
             >
               Download LOI (.pdf)

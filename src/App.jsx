@@ -9,6 +9,9 @@ import useDocuSign from './hooks/useDocuSign';
 export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loiText, setLoiText] = useState('');
+  const [pdfBase64, setPdfBase64] = useState('');
+  const [pdfFilename, setPdfFilename] = useState('');
+  const [loiVersion, setLoiVersion] = useState(0);
   const [dealData, setDealData] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -29,12 +32,16 @@ export default function App() {
       });
 
       const data = await res.json();
+      console.log('[LOI Generate] status:', res.status, 'has text:', !!data.text, 'text length:', data.text?.length, 'has pdf:', !!data.pdfBase64, 'pdf length:', data.pdfBase64?.length);
 
       if (!res.ok) {
         throw new Error(data.error || 'Failed to generate LOI');
       }
 
-      setLoiText(data.loi);
+      setLoiText(data.text);
+      setPdfBase64(data.pdfBase64);
+      setPdfFilename(data.filename);
+      setLoiVersion(v => v + 1);
       setCurrentStep(2);
     } catch (err) {
       setError(err.message);
@@ -61,7 +68,10 @@ export default function App() {
         throw new Error(data.error || 'Failed to regenerate LOI');
       }
 
-      setLoiText(data.loi);
+      setLoiText(data.text);
+      setPdfBase64(data.pdfBase64);
+      setPdfFilename(data.filename);
+      setLoiVersion(v => v + 1);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -69,14 +79,17 @@ export default function App() {
     }
   }, [dealData]);
 
-  function handleSendForSignature(editedText) {
+  function handleSendForSignature(editedText, pdf) {
     setLoiText(editedText);
+    if (pdf) setPdfBase64(pdf);
     setCurrentStep(3);
   }
 
   function handleStartNew() {
     setCurrentStep(1);
     setLoiText('');
+    setPdfBase64('');
+    setPdfFilename('');
     setDealData(null);
     setError('');
   }
@@ -104,7 +117,9 @@ export default function App() {
 
         {currentStep === 2 && (
           <LOIPreview
+            key={loiVersion}
             loiText={loiText}
+            pdfBase64={pdfBase64}
             dealData={dealData}
             onBack={() => setCurrentStep(1)}
             onRegenerate={regenerateLOI}
@@ -116,6 +131,7 @@ export default function App() {
         {currentStep === 3 && (
           <SignaturePanel
             loiText={loiText}
+            pdfBase64={pdfBase64}
             dealData={dealData}
             isDocuSignConnected={isDocuSignConnected}
             onStartNew={handleStartNew}

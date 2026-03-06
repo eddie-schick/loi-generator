@@ -13,7 +13,7 @@ Tagline: Unify. Simplify. Disrupt.
 Website: shaed.ai
 Founded: 2021
 CEO & Co-Founder: Ryan Pritchard — 21+ years of automotive and commercial vehicle industry experience, focused on shared, autonomous, and electrified mobility
-COO & Co-Founder: Eddie Schick — leads investor relations, fundraising, and financial strategy; background at Pritchard EV, Coty, and RSM
+CFO & Co-Founder: Eddie Schick — leads investor relations, fundraising, and financial strategy; background at Pritchard EV, Coty, and RSM
 
 ## THE PROBLEM SHAED SOLVES
 
@@ -38,7 +38,6 @@ SHAED's answer: one integrated platform that unifies fragmented legacy systems. 
 - 66,000+ status updates processed
 - $3.8B+ in total transaction value processed
 - $980M+ in pipeline demand value
-- 90+ stakeholders onboarded
 - 7,800+ platform logins
 - 65% of users onboarded through organic network referrals — zero direct sales effort
 - $1M in booked revenue confirmed entering 2026
@@ -49,8 +48,8 @@ SHAED's answer: one integrated platform that unifies fragmented legacy systems. 
 One of the largest commercial vehicle dealer networks in North America partnered with SHAED as anchor design partner and investor. Results:
 
 Workflow Impact:
-- Quoting & Order Processing: 4–6 hours → under 15 minutes (95% reduction)
-- Deal Jacket Completion: 2–3 days → same day (80–90% faster)
+- Quoting & Order Processing: 4–6 hours → under 15 minutes 
+- Deal Jacket Completion: 2–3 days → same day 
 - Network Coordination: 4–8 hours/week on phone/email → real-time platform
 - Annual Value Delivered: $2.34M to design partner alone
 
@@ -180,6 +179,7 @@ SHAED is the only end-to-end commercial vehicle platform combining Catalog, Orde
 - Tone: Direct, commercially focused, confident but collaborative. Plain business English. Not overly legalistic.
 - Always reference the specific counterparty's segment and use case — make the LOI feel tailored, not templated
 - Use SHAED's proven metrics where relevant (e.g., for an upfitter, reference the 95% reduction in order processing time)
+- Do NOT include specific counts of partners, dealers, or network size (e.g., do not say "1,800+ dealers" or "90+ stakeholders"). Instead use general language like "SHAED's dealer and fleet buyer network" or "SHAED's growing network of dealers and fleet buyers"
 - The partnership framing is mutual — both parties benefit; describe what each party brings
 - Non-binding, good faith framework toward a definitive agreement
 - Governing law: State of Minnesota
@@ -196,12 +196,30 @@ function buildUserPrompt(deal) {
   const moduleLabels = {
     shop: 'SHOP — Marketplace & customer acquisition (omnichannel catalog, configure-to-order CPQ)',
     track: 'TRACK — Real-time order tracking & network orchestration (end-to-end visibility, multi-stakeholder)',
-    document: 'DOCUMENT — AI-powered deal jacket processing, PaperX AI, 99.84% accuracy'
+    document: 'DOCUMENT — AI-powered deal jacket processing'
   };
 
   const selectedModules = (deal.modules || [])
     .map(m => moduleLabels[m.toLowerCase()] || m)
     .join('\n- ');
+
+  // Build commercial terms context
+  const commercialLines = [];
+  if (deal.subscriptionFee) {
+    commercialLines.push(`- Monthly Subscription Fee: ${deal.subscriptionFee}/month`);
+  }
+  if (deal.implementation === 'yes' && deal.implementationFee) {
+    commercialLines.push(`- Implementation Fee: ${deal.implementationFee} (one-time)`);
+  }
+  if (deal.implementation === 'yes' && !deal.implementationFee) {
+    commercialLines.push(`- Implementation: Included but pricing to be determined during discovery`);
+  }
+  if (!deal.subscriptionFee && !deal.implementationFee) {
+    commercialLines.push(`- No specific fees have been defined yet. All terms to be discussed.`);
+  }
+  if (deal.discoveryPeriod?.trim()) {
+    commercialLines.push(`- Discovery Period: ${deal.discoveryPeriod} (timeframe for initiating discovery sessions from execution of this LOI)`);
+  }
 
   const lines = [
     `Generate a Letter of Intent from SHAED Inc. to the following prospective platform partner:`,
@@ -223,17 +241,7 @@ function buildUserPrompt(deal) {
       ? `SHAED MODULES SELECTED:\n- ${selectedModules}`
       : `SHAED MODULES SELECTED:\nNone specified yet. In the SHAED PLATFORM MODULES section, note that SHAED will follow up with a detailed proposal on platform access and subscription.`,
     ``,
-    `COMMERCIAL TERMS:`,
-    deal.subscriptionFee
-      ? `- Monthly Subscription Fee: ${deal.subscriptionFee}/month` : null,
-    deal.implementation === 'yes' && deal.implementationFee
-      ? `- Implementation Fee: ${deal.implementationFee} (one-time)` : null,
-    deal.implementation === 'yes' && !deal.implementationFee
-      ? `- Implementation: Included. SHAED will follow up with a detailed implementation proposal and pricing.` : null,
-    deal.implementation === 'no'
-      ? `- Implementation: Not included in this agreement` : null,
-    deal.discoveryPeriod?.trim()
-      ? `- Discovery / Onboarding Period: ${deal.discoveryPeriod}` : null,
+    `COMMERCIAL TERMS PROVIDED:\n${commercialLines.join('\n')}`,
     ``,
     deal.other?.trim()
       ? `ADDITIONAL CONTEXT / NOTES:\n${deal.other}` : null,
@@ -248,13 +256,15 @@ function buildUserPrompt(deal) {
     `STRUCTURE THE LOI WITH THESE SECTIONS (skip any section where no data was provided):`,
     ``,
     `1. LETTERHEAD`,
-    `   Three lines with no blank lines between them: SHAED Inc. (bold), then Minneapolis, MN | shaed.ai, then the letter date (e.g. March 5, 2026). Right-aligned.`,
+    `   Three lines with no blank lines between them: SHAED Inc. (bold), then Minneapolis, MN | shaed.ai, then the letter date. Do NOT include a title — the PDF adds it automatically.`,
     ``,
     `2. SALUTATION`,
     `   "Dear ${deal.signorName?.split(' ')[0] || '[First Name]'},"`,
     ``,
-    `3. PURPOSE`,
-    `   2–3 sentences establishing what this LOI represents and the mutual intent of both parties.`,
+    `3. OPENING PARAGRAPH (NO SECTION HEADER)`,
+    `   Do NOT use a "PURPOSE" header. Immediately after the salutation, write 2–3 sentences`,
+    `   establishing what this LOI represents and the mutual intent of both parties.`,
+    `   This paragraph flows naturally from the greeting — no ALL CAPS header above it.`,
     ``,
     `4. BACKGROUND`,
     `   1 paragraph on SHAED's platform and specifically why it is relevant to this company's`,
@@ -264,27 +274,66 @@ function buildUserPrompt(deal) {
     `   Bullet points. What SHAED will provide. What the counterparty commits to.`,
     ``,
     `6. SHAED PLATFORM MODULES`,
-    `   For each selected module, 1–2 sentences describing what it specifically delivers`,
-    `   to this counterparty's business. Make it concrete to their segment.`,
+    `   If specific modules were selected: For each selected module, 1–2 sentences describing`,
+    `   what it specifically delivers to this counterparty's business. Make it concrete to their segment.`,
+    `   If NO modules were selected: Write 2–3 sentences explaining that SHAED offers a suite of`,
+    `   integrated modules — SHOP (marketplace & catalog), TRACK (order management & visibility),`,
+    `   and DOCUMENT (AI-powered deal jacket processing) — and that SHAED will conduct a discovery`,
+    `   session to identify which modules best address the counterparty's specific workflows and pain points,`,
+    `   followed by a detailed platform proposal. Make this feel consultative, not vague.`,
     ``,
     `7. COMMERCIAL TERMS`,
-    `   Only include terms that were provided. Format clearly.`,
-    `   Include: payment terms Net 30, subscription commencement date.`,
+    `   CRITICAL: Always include this section. Write it as prose paragraphs (NOT bullet lists).`,
+    `   This section must be substantive — at least 2 paragraphs. Handle based on what was provided:`,
+    ``,
+    `   - If BOTH subscription fee AND implementation fee were provided: First paragraph states both fees`,
+    `     and describes what each covers. Second paragraph notes that detailed terms including service levels,`,
+    `     support tiers, and renewal terms will be formalized in the definitive agreement.`,
+    ``,
+    `   - If ONLY implementation fee was provided: First paragraph states the implementation fee and describes`,
+    `     what it covers (platform onboarding, configuration, data migration, integration, and training).`,
+    `     Second paragraph (REQUIRED): state that ongoing subscription pricing for platform access,`,
+    `     maintenance, and technical support will be defined during the discovery and negotiation process`,
+    `     and formalized in the definitive agreement. Mention these may include monthly platform access fees,`,
+    `     support and maintenance services, and future module additions.`,
+    ``,
+    `   - If ONLY subscription fee was provided: First paragraph states the subscription fee and what it covers.`,
+    `     Second paragraph notes that implementation scope, onboarding approach, and any associated fees`,
+    `     will be determined during the discovery phase and detailed in the definitive agreement.`,
+    ``,
+    `   - If NO fees were provided: Write 2–3 substantive paragraphs. State that the parties agree to engage`,
+    `     in further discussions to define commercial terms following the discovery phase. Describe the types`,
+    `     of terms to be negotiated: monthly subscription fees for platform access, one-time implementation`,
+    `     and onboarding fees, ongoing maintenance and support services, and any custom integration costs.`,
+    `     Note that all commercial terms will be formalized in the definitive agreement.`,
+    ``,
+    `   Do NOT include payment terms (Net 30) or subscription commencement dates.`,
     ``,
     `8. DISCOVERY & IMPLEMENTATION TIMELINE`,
     `   Only include if discovery period or implementation was specified.`,
-    `   Describe 3 onboarding phases with realistic timeframes based on the effective date.`,
+    `   Frame the discovery period as the window during which discovery sessions will be initiated`,
+    `   from the execution date of this LOI. These sessions are designed to assess the counterparty's`,
+    `   current workflows, identify integration requirements, and define the scope of the platform deployment.`,
+    `   Then describe 3 onboarding phases with realistic timeframes:`,
+    `   Phase 1 - Discovery & Requirements Gathering: stakeholder interviews, system mapping, workflow analysis.`,
+    `   Phase 2 - Platform Configuration & Integration: data migration, custom configuration, integration setup.`,
+    `   Phase 3 - Go-Live & Optimization: training, launch, ongoing optimization.`,
+    `   Include estimated durations for each phase. Keep the discovery procedures detailed and substantive.`,
     ``,
     `9. CONFIDENTIALITY`,
     `   Mutual NDA language. 2-year term.`,
     ``,
     `10. NON-BINDING NOTICE`,
-    `    "This Letter of Intent is non-binding and is intended solely to outline`,
-    `    the mutual intent of the parties to negotiate in good faith toward a`,
-    `    definitive agreement."`,
+    `    Write 2–3 sentences. State that this LOI is non-binding and intended solely to outline`,
+    `    the mutual intent of the parties to negotiate in good faith toward a definitive agreement.`,
+    `    Add that nothing in this LOI creates an obligation for either party to enter into a binding`,
+    `    agreement, and that either party may terminate discussions at any time without liability.`,
     ``,
     `11. GOVERNING LAW`,
-    `    State of Minnesota.`,
+    `    State that this LOI and any disputes arising from it shall be governed by and construed`,
+    `    in accordance with the laws of the State of Minnesota, without regard to its conflict of`,
+    `    laws principles. Add that any legal proceedings shall be brought in the state or federal`,
+    `    courts located in Hennepin County, Minnesota.`,
     ``,
     `12. EXPIRATION`,
     `    This LOI expires 30 days from the date above if not countersigned.`,
@@ -310,15 +359,22 @@ export default async function handler(req, res) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2500,
+      max_tokens: 3500,
       system: SHAED_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: buildUserPrompt(deal) }]
     });
 
     const loiText = response.content[0].text;
-    res.status(200).json({ loi: loiText });
+    console.log('[generate-loi] Claude returned text, length:', loiText?.length);
+
+    // Return text immediately — frontend generates PDF async via /api/render-pdf
+    const dateStr = new Date().toISOString().split('T')[0];
+    const companyName = (deal.companyName || 'Company').replace(/\s+/g, '_');
+    const filename = `SHAED_LOI_${companyName}_${dateStr}.pdf`;
+
+    res.status(200).json({ text: loiText, pdfBase64: null, filename });
   } catch (error) {
-    console.error('Claude API error:', error);
+    console.error('[generate-loi] Error:', error);
     res.status(500).json({ error: 'Failed to generate LOI', details: error.message });
   }
 }
