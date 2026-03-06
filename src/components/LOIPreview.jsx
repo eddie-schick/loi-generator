@@ -215,17 +215,43 @@ export default function LOIPreview({ loiText, pdfBase64: initialPdfBase64, dealD
                 </div>
               </div>
             ) : currentPdf ? (
-              <div
-                className="w-full rounded-lg overflow-auto overflow-x-hidden bg-neutral-50 min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] max-h-[70vh] sm:max-h-[75vh] lg:max-h-[min(80vh,900px)]"
-                style={{ WebkitOverflowScrolling: 'touch' }}
-              >
-                <iframe
-                  src={`data:application/pdf;base64,${currentPdf}`}
-                  className="w-full rounded-lg border-0 block"
-                  style={{ minHeight: '320px', height: '2000px' }}
-                  title="LOI Preview"
-                />
-              </div>
+              <>
+                {/* Desktop: iframe PDF embed */}
+                <div className="hidden md:block w-full rounded-lg overflow-hidden bg-neutral-50 min-h-[480px] lg:min-h-[600px] max-h-[75vh] lg:max-h-[min(80vh,900px)]">
+                  <iframe
+                    src={`data:application/pdf;base64,${currentPdf}`}
+                    className="w-full rounded-lg border-0 block"
+                    style={{ minHeight: '480px', height: '2000px' }}
+                    title="LOI Preview"
+                  />
+                </div>
+                {/* Mobile: scrollable text preview + View PDF button */}
+                <div className="md:hidden">
+                  <div
+                    className="w-full rounded-lg bg-white border border-neutral-200 overflow-y-auto max-h-[55vh] p-4"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                  >
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-800" style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+                      {currentText}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const byteChars = atob(currentPdf);
+                      const byteNumbers = new Uint8Array(byteChars.length);
+                      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+                      const blob = new Blob([byteNumbers], { type: 'application/pdf' });
+                      window.open(URL.createObjectURL(blob), '_blank');
+                    }}
+                    className="mt-3 btn-secondary w-full py-2.5 min-h-[44px] text-sm flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    Open PDF
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="flex items-center justify-center min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] bg-neutral-50 rounded-lg">
                 <span className="text-sm text-neutral-500">PDF preview not available</span>
