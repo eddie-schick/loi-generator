@@ -215,12 +215,17 @@ export default function LOIPreview({ loiText, pdfBase64: initialPdfBase64, dealD
                 </div>
               </div>
             ) : currentPdf ? (
-              <iframe
-                src={`data:application/pdf;base64,${currentPdf}`}
-                className="w-full rounded-lg"
-                style={{ border: 'none', height: 'min(80vh, 900px)' }}
-                title="LOI Preview"
-              />
+              <div
+                className="w-full rounded-lg overflow-auto overflow-x-hidden bg-neutral-50 min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] max-h-[70vh] sm:max-h-[75vh] lg:max-h-[min(80vh,900px)]"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                <iframe
+                  src={`data:application/pdf;base64,${currentPdf}`}
+                  className="w-full rounded-lg border-0 block"
+                  style={{ minHeight: '320px', height: '2000px' }}
+                  title="LOI Preview"
+                />
+              </div>
             ) : (
               <div className="flex items-center justify-center min-h-[320px] sm:min-h-[480px] lg:min-h-[600px] bg-neutral-50 rounded-lg">
                 <span className="text-sm text-neutral-500">PDF preview not available</span>
