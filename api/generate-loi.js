@@ -190,7 +190,7 @@ SHAED is the only end-to-end commercial vehicle platform combining Catalog, Orde
 
 function buildUserPrompt(deal) {
   const signatory = deal.shaedSignatory === 'eddie'
-    ? 'Eddie Schick, COO & Co-Founder'
+    ? 'Eddie Schick, CFO & Co-Founder'
     : 'Ryan Pritchard, CEO & Co-Founder';
 
   const moduleLabels = {

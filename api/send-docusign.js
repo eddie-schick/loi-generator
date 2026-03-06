@@ -1,26 +1,10 @@
 import docusign from 'docusign-esign';
-
-function parseCookies(cookieHeader) {
-  const cookies = {};
-  if (!cookieHeader) return cookies;
-  cookieHeader.split(';').forEach(cookie => {
-    const [name, ...rest] = cookie.trim().split('=');
-    cookies[name] = rest.join('=');
-  });
-  return cookies;
-}
+import { getDocuSignClient } from './docusign-jwt.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const cookies = parseCookies(req.headers.cookie);
-  const accessToken = cookies.ds_access_token;
-
-  if (!accessToken) {
-    return res.status(401).json({ error: 'Not authenticated with DocuSign. Please connect first.' });
-  }
-
-  const { loiText, pdfBase64, companyName, signerEmail, signerName, personalMessage } = req.body;
+  const { loiText, pdfBase64, companyName, signerEmail, signerName, personalMessage, shaedSignatory } = req.body;
 
   if (!companyName || !signerEmail || !signerName || (!loiText && !pdfBase64)) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -29,15 +13,16 @@ export default async function handler(req, res) {
   const dateStr = new Date().toISOString().split('T')[0];
 
   try {
-    const apiClient = new docusign.ApiClient();
-    apiClient.setBasePath(process.env.DOCUSIGN_BASE_URL);
-    apiClient.addDefaultHeader('Authorization', `Bearer ${accessToken}`);
-
+    const apiClient = await getDocuSignClient();
     const envelopesApi = new docusign.EnvelopesApi(apiClient);
 
-    // Determine SHAED signatory from env
-    const shaedSignerEmail = process.env.SHAED_SIGNER_EMAIL;
-    const shaedSignerName = process.env.SHAED_SIGNER_NAME;
+    // Pick SHAED signatory based on selection
+    const shaedSignerEmail = shaedSignatory === 'eddie'
+      ? process.env.SHAED_SIGNER_EMAIL_SECONDARY
+      : process.env.SHAED_SIGNER_EMAIL;
+    const shaedSignerName = shaedSignatory === 'eddie'
+      ? process.env.SHAED_SIGNER_NAME_SECONDARY
+      : process.env.SHAED_SIGNER_NAME;
 
     // Use styled PDF if provided, otherwise fall back to plain text
     const document = pdfBase64
@@ -99,8 +84,14 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('DocuSign send error:', error);
 
-    if (error.response?.statusCode === 401) {
-      return res.status(401).json({ error: 'DocuSign token expired. Please reconnect.' });
+    // If consent hasn't been granted yet
+    if (error?.response?.body?.error === 'consent_required') {
+      const isDemo = process.env.DOCUSIGN_BASE_URL?.includes('demo');
+      const consentHost = isDemo ? 'account-d.docusign.com' : 'account.docusign.com';
+      return res.status(400).json({
+        error: 'DocuSign consent required. An admin must grant consent once.',
+        consentUrl: `https://${consentHost}/oauth/auth?response_type=code&scope=signature%20impersonation&client_id=${process.env.DOCUSIGN_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.DOCUSIGN_REDIRECT_URI)}`,
+      });
     }
 
     res.status(500).json({ error: 'Failed to send DocuSign envelope', details: error.message });

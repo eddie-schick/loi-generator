@@ -304,7 +304,7 @@ export default function LOIForm({ onGenerate, isGenerating }) {
           <label className="form-label">SHAED Signatory *</label>
           <select name="shaedSignatory" value={form.shaedSignatory} onChange={handleChange} className="form-input max-w-md">
             <option value="ryan">Ryan Pritchard — CEO & Co-Founder</option>
-            <option value="eddie">Eddie Schick — COO & Co-Founder</option>
+            <option value="eddie">Eddie Schick — CFO & Co-Founder</option>
           </select>
         </div>
       </div>

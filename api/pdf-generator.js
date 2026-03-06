@@ -342,9 +342,9 @@ function isRedundantSignatureParagraph(text, dealData) {
     leftName,
     dealData?.signorTitle?.trim(),
     'Ryan Pritchard', 'Eddie Schick',
-    'CEO & Co-Founder', 'COO & Co-Founder',
+    'CEO & Co-Founder', 'CFO & Co-Founder',
     'Ryan Pritchard, CEO & Co-Founder',
-    'Eddie Schick, COO & Co-Founder',
+    'Eddie Schick, CFO & Co-Founder',
   ].filter(Boolean);
   if (exactChecks.some(c => plain === c)) return true;
   if (exactChecks.some(c => plain === `${c}, Date:` || plain === `${c}, Date`)) return true;
@@ -410,7 +410,7 @@ export async function generateLOIPdf(loiText, dealData) {
   // ── RENDER BLOCKS ──
   const blocks = parseLOIText(loiText);
   const shaedSignatory = dealData?.shaedSignatory === 'eddie'
-    ? { name: 'Eddie Schick', title: 'COO & Co-Founder' }
+    ? { name: 'Eddie Schick', title: 'CFO & Co-Founder' }
     : { name: 'Ryan Pritchard', title: 'CEO & Co-Founder' };
 
   let signatureRendered = false;

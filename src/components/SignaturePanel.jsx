@@ -10,7 +10,7 @@ const STATUS_COLORS = {
   voided: 'bg-neutral-200 text-neutral-700',
 };
 
-export default function SignaturePanel({ loiText, pdfBase64, dealData, isDocuSignConnected, onStartNew }) {
+export default function SignaturePanel({ loiText, pdfBase64, dealData, onStartNew }) {
   const [recipientEmail, setRecipientEmail] = useState(dealData.signorEmail || dealData.contactEmail || '');
   const [recipientName, setRecipientName] = useState(
     dealData.signorName || `${dealData.contactFirstName || ''} ${dealData.contactLastName || ''}`.trim()
@@ -62,6 +62,7 @@ export default function SignaturePanel({ loiText, pdfBase64, dealData, isDocuSig
           signerEmail: recipientEmail,
           signerName: recipientName,
           personalMessage,
+          shaedSignatory: dealData.shaedSignatory,
         }),
       });
 
@@ -86,10 +87,6 @@ export default function SignaturePanel({ loiText, pdfBase64, dealData, isDocuSig
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handleConnectDocuSign() {
-    window.location.href = '/api/docusign-auth';
-  }
-
   function handleDownloadPdf() {
     if (!pdfBase64) return;
     const byteChars = atob(pdfBase64);
@@ -104,28 +101,6 @@ export default function SignaturePanel({ loiText, pdfBase64, dealData, isDocuSig
     a.download = `SHAED_LOI_${dealData.companyName?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  // Not authenticated state
-  if (!isDocuSignConnected) {
-    return (
-      <div className="max-w-lg mx-auto px-0">
-        <div className="card p-6 sm:p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-navy/10 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-navy" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-semibold text-neutral-900 mb-2">Connect DocuSign</h3>
-          <p className="text-sm text-neutral-700 mb-6">
-            Authenticate with DocuSign to send the LOI for e-signature.
-          </p>
-          <button onClick={handleConnectDocuSign} className="btn-primary px-8 py-3">
-            Connect DocuSign
-          </button>
-        </div>
-      </div>
-    );
   }
 
   // Envelope sent — success state
@@ -178,7 +153,7 @@ export default function SignaturePanel({ loiText, pdfBase64, dealData, isDocuSig
     );
   }
 
-  // Send form
+  // Send form — no login required, JWT handles auth server-side
   return (
     <div className="max-w-lg mx-auto px-0">
       <div className="card p-4 sm:p-6">

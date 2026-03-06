@@ -4,7 +4,6 @@ import StepIndicator from './components/StepIndicator';
 import LOIForm from './components/LOIForm';
 import LOIPreview from './components/LOIPreview';
 import SignaturePanel from './components/SignaturePanel';
-import useDocuSign from './hooks/useDocuSign';
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -16,8 +15,6 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState('');
-
-  const { isConnected: isDocuSignConnected } = useDocuSign();
 
   const generateLOI = useCallback(async (deal) => {
     setIsGenerating(true);
@@ -133,7 +130,6 @@ export default function App() {
             loiText={loiText}
             pdfBase64={pdfBase64}
             dealData={dealData}
-            isDocuSignConnected={isDocuSignConnected}
             onStartNew={handleStartNew}
           />
         )}
