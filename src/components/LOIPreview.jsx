@@ -217,9 +217,8 @@ export default function LOIPreview({ loiText, pdfBase64: initialPdfBase64, dealD
             ) : currentPdf ? (
               <iframe
                 src={`data:application/pdf;base64,${currentPdf}`}
-                width="100%"
-                height="800px"
-                style={{ border: 'none', borderRadius: '8px' }}
+                className="w-full rounded-lg"
+                style={{ border: 'none', height: 'min(80vh, 900px)' }}
                 title="LOI Preview"
               />
             ) : (
