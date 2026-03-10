@@ -5,7 +5,7 @@
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,14 +23,11 @@ try {
   }
 } catch { /* no .env.local */ }
 
-// Dynamic import of handler modules
-const handlers = {};
+// Fresh import each request in dev (no caching)
 async function loadHandler(name) {
-  if (!handlers[name]) {
-    const mod = await import(`./api/${name}.js`);
-    handlers[name] = mod.default;
-  }
-  return handlers[name];
+  const modPath = pathToFileURL(resolve(__dirname, 'api', `${name}.js`)).href;
+  const mod = await import(`${modPath}?t=${Date.now()}`);
+  return mod.default;
 }
 
 function parseBody(req) {

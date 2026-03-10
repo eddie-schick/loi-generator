@@ -92,7 +92,8 @@ body {
   border: 1px solid var(--neutral-200);
   border-radius: 0.5rem;
   padding: 0.625rem 0.875rem;
-  font-size: 0.875rem;
+  /* Use at least 16px to prevent mobile browsers (iOS Safari) from auto-zooming on focus */
+  font-size: 1rem;
   font-family: var(--font-primary);
   color: var(--neutral-900);
   transition: border-color 0.2s, box-shadow 0.2s;

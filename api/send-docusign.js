@@ -40,7 +40,7 @@ export default async function handler(req, res) {
         };
 
     const envelope = {
-      emailSubject: `LOI: SHAED Inc. × ${companyName} — Please Sign`,
+      emailSubject: `LOI: SHAED Inc. x ${companyName} - Please Sign`,
       emailBlurb: personalMessage || `Please review and sign the attached Letter of Intent from SHAED Inc.`,
       documents: [document],
       recipients: {
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
       message: 'Envelope sent successfully',
     });
   } catch (error) {
-    console.error('DocuSign send error:', error);
+    console.error('DocuSign send error:', error?.response?.body || error.message || error);
 
     // If consent hasn't been granted yet
     if (error?.response?.body?.error === 'consent_required') {
@@ -94,6 +94,8 @@ export default async function handler(req, res) {
       });
     }
 
-    res.status(500).json({ error: 'Failed to send DocuSign envelope', details: error.message });
+    // Surface the actual DocuSign error message for debugging
+    const dsError = error?.response?.body?.message || error?.response?.body?.errorCode || error.message;
+    res.status(500).json({ error: `DocuSign error: ${dsError}`, details: error.message });
   }
 }

@@ -159,16 +159,16 @@ export default function LOIForm({ onGenerate, isGenerating }) {
             />
           </div>
           <div>
-            <label className="form-label">Signor Name *</label>
+            <label className="form-label">Name *</label>
             <input name="signorName" value={form.signorName} onChange={handleChange} className="form-input" placeholder="Full name of signer" />
             <FieldError name="signorName" />
           </div>
           <div>
-            <label className="form-label">Signor Title</label>
+            <label className="form-label">Title</label>
             <input name="signorTitle" value={form.signorTitle} onChange={handleChange} className="form-input" placeholder="e.g. VP of Operations" />
           </div>
           <div className="md:col-span-2">
-            <label className="form-label">Signor Email *</label>
+            <label className="form-label">Email *</label>
             <input name="signorEmail" type="email" value={form.signorEmail} onChange={handleChange} className="form-input max-w-md" placeholder="email@example.com" />
             <FieldError name="signorEmail" />
           </div>

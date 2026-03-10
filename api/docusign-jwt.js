@@ -20,8 +20,8 @@ export async function getDocuSignAccessToken() {
   const apiClient = new docusign.ApiClient();
   apiClient.setOAuthBasePath(oauthHost);
 
-  // RSA key stored in env with literal \n — convert to real newlines
-  const rsaKey = process.env.DOCUSIGN_RSA_PRIVATE_KEY.replace(/\\n/g, '\n');
+  // Parse RSA key for JWT auth
+  const rsaKey = process.env.DOCUSIGN_RSA_PRIVATE_KEY.split(String.fromCharCode(92) + "n").join(String.fromCharCode(10));
 
   const results = await apiClient.requestJWTUserToken(
     process.env.DOCUSIGN_CLIENT_ID,
@@ -43,7 +43,15 @@ export async function getDocuSignAccessToken() {
 export async function getDocuSignClient() {
   const accessToken = await getDocuSignAccessToken();
   const apiClient = new docusign.ApiClient();
-  apiClient.setBasePath(process.env.DOCUSIGN_BASE_URL);
+
+  // Ensure base path ends with /restapi (required by the SDK)
+  let basePath = process.env.DOCUSIGN_BASE_URL;
+  if (basePath && !basePath.endsWith('/restapi')) {
+    basePath = basePath.replace(/\/+$/, '') + '/restapi';
+  }
+
+
+  apiClient.setBasePath(basePath);
   apiClient.addDefaultHeader('Authorization', `Bearer ${accessToken}`);
   return apiClient;
 }

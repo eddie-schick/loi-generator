@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Header from './components/Header';
 import StepIndicator from './components/StepIndicator';
 import LOIForm from './components/LOIForm';
@@ -15,6 +15,12 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    }
+  }, [currentStep]);
 
   const generateLOI = useCallback(async (deal) => {
     setIsGenerating(true);
