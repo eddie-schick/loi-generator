@@ -5,7 +5,7 @@
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,11 +23,15 @@ try {
   }
 } catch { /* no .env.local */ }
 
-// Fresh import each request in dev (no caching)
+// Cache handlers after first load (restart server to pick up changes)
+const handlers = {};
 async function loadHandler(name) {
-  const modPath = pathToFileURL(resolve(__dirname, 'api', `${name}.js`)).href;
-  const mod = await import(`${modPath}?t=${Date.now()}`);
-  return mod.default;
+  if (!handlers[name]) {
+    console.log(`[dev] Loading handler: api/${name}.js`);
+    const mod = await import(`./api/${name}.js`);
+    handlers[name] = mod.default;
+  }
+  return handlers[name];
 }
 
 function parseBody(req) {
@@ -108,13 +112,13 @@ const server = createServer(async (req, rawRes) => {
 
     await handler(mockReq, mockRes);
   } catch (err) {
-    console.error(`Error in /api/${fnName}:`, err);
+    console.error(`[dev] Error in /api/${fnName}:`, err.message || err);
     rawRes.writeHead(500, { 'Content-Type': 'application/json' });
     rawRes.end(JSON.stringify({ error: err.message }));
   }
 });
 
-server.listen(3000, () => {
-  console.log('API dev server running on http://localhost:3000');
+server.listen(3001, () => {
+  console.log('API dev server running on http://localhost:3001');
   console.log('Routes: /api/generate-loi, /api/edit-loi, /api/send-docusign, etc.');
 });
